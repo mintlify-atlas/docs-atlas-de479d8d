@@ -1,0 +1,216 @@
+---
+title: Creating Service Tickets
+description: Step-by-step guide to creating and managing repair service tickets in Luis IT Repair
+---
+
+## Overview
+
+The service ticket creation process (Hoja de Servicio) allows you to register new repair jobs with client information, device details, and work descriptions. The system includes smart client lookup, device catalog integration, and automatic folio generation.
+
+## Prerequisites
+
+- Permission: `servicios.crear` (Create Services)
+- Active user account with appropriate role (Técnico or Administrador)
+
+## Step-by-Step Process
+
+<Steps>
+
+### Access the Service Ticket Form
+
+Navigate to the service ticket creation page from your main dashboard. The form is located at `/hoja-servicio`.
+
+### Enter Client Information
+
+1. **Name**: Start typing the client's name (minimum 3 characters)
+   - The system will search for existing clients automatically
+   - Matching suggestions appear in a dropdown below the field
+   - Select an existing client to auto-fill their contact details
+
+2. **Address**: Enter the client's physical address (optional)
+
+3. **Phone**: Enter a 10-digit phone number
+   - Only numeric input is accepted
+   - This field is used for client lookup and duplicate detection
+
+<Note>
+When you select an existing client from suggestions, their phone, address, and preferred serial number settings are automatically populated.
+</Note>
+
+### Specify Device Information
+
+1. **Device Type**: Select from dropdown
+   - Laptop
+   - Desktop Computer (PC)
+   - Printer
+   - Monitor
+
+2. **Brand**: Type or select from the datalist
+   - Common brands: Apple, MSI, Lenovo, Acer, Dell, Ateck, Asus, HP
+
+3. **Model**: Select from the filtered list
+   - Available models update based on selected brand
+   - Device specifications auto-populate when model is selected
+
+4. **Serial Number**: 
+   - Enter the device's serial number
+   - Or check "No quiero poner el numero de serie" to skip
+
+<Warning>
+You must either provide a serial number OR explicitly check the "skip serial number" option. The form will not submit without one of these choices.
+</Warning>
+
+### Configure Device-Specific Details
+
+Depending on the device type selected, different sections appear:
+
+#### For Laptop/PC:
+
+```javascript
+// Auto-populated from model catalog if available
+{
+  procesador: "Intel Core i5",  // Processor
+  ram: "8 GB",                   // RAM
+  disco: "SSD 256 GB",          // Storage
+  estadoPantalla: "Funciona bien",
+  estadoTeclado: "Funciona bien",
+  estadoMouse: "Funciona bien",
+  funciona: "Sí",
+  enciendeEquipo: "Sí",
+  contrasenaEquipo: ""          // Optional password
+}
+```
+
+- **Screen Status**: Functioning, With defects, or Damaged
+- **Keyboard Status**: Working, some keys fail, most don't work, or not working
+- **Mouse/Touchpad**: Working, sometimes fails, or not working
+- **Device Password**: Optional field for access credentials
+
+#### For Printers:
+
+- **Type**: Inkjet, Laser, or Multifunction
+- **Prints Correctly**: Yes/No
+- **Physical Conditions**: Free text description
+
+#### For Monitors:
+
+- **Size**: Screen size in inches
+- **Correct Colors**: Yes/No
+- **Physical Conditions**: Free text description
+
+<Note>
+Check "Rellenar caracteristicas despues" (Fill characteristics later) if you need to capture device specs after initial registration.
+</Note>
+
+### Describe Work and Pricing
+
+1. **Work to Perform**: Describe the repair work or issue
+   - This field uses fuzzy matching for duplicate detection
+   - Textarea auto-expands as you type
+
+2. **Estimated Cost**:
+   - Enter numeric value
+   - Or check "Precio se define después del mantenimiento" to set price later
+
+### Submit the Service
+
+Click **"Guardar Registro y Generar PDF"** to:
+
+1. Save the service record to Firestore
+2. Create or update the client record
+3. Generate a unique folio number
+4. Produce a PDF service sheet
+5. Navigate to the ticket detail view
+
+</Steps>
+
+## Duplicate Detection
+
+The system prevents duplicate service entries using:
+
+```javascript
+// Deduplication key structure
+const dedupeKey = `${phone}|${deviceType}|${brand}|${model}`;
+```
+
+**Active services are flagged as duplicates when:**
+- Same phone number, device type, brand, and model
+- Service is not in a final state (not "entregado", "cancelado", or "no_reparable")
+- Similar work description (normalized text matching)
+
+If a duplicate is detected:
+
+<Warning>
+The system shows an alert with the existing service folio and offers to open that service instead.
+</Warning>
+
+## Client Auto-Linking
+
+When creating a service:
+
+1. **Existing Client Selected**: Updates their record with latest info
+2. **New Client**: Creates a new client document automatically
+3. **Client ID**: Stored in `servicioId` field for relationship tracking
+
+```javascript
+// Service-to-client linkage
+const servicePayload = {
+  clienteId: clientIdFinal,  // Links to clients collection
+  nombre: form.nombre,
+  telefono: form.telefono,
+  // ... other fields
+};
+```
+
+## Folio Generation
+
+Each service receives a unique folio identifier:
+
+- Format varies by brand (e.g., "MSI/001", "HP/042")
+- Stored in a separate `folios` collection for uniqueness guarantee
+- Cannot be changed after creation
+- Used for service lookup in POS and status tracking
+
+See: `src/js/services/servicios_firestore.js:196-229`
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Client Lookup" icon="search">
+    Always search for existing clients before creating new ones to maintain clean data.
+  </Card>
+  
+  <Card title="Complete Serial Numbers" icon="hashtag">
+    Capture serial numbers when possible for warranty tracking and device identification.
+  </Card>
+  
+  <Card title="Detailed Work Descriptions" icon="file-lines">
+    Write clear work descriptions to avoid confusion and improve duplicate detection.
+  </Card>
+  
+  <Card title="Verify Device Info" icon="check">
+    Confirm auto-populated specs match the actual device before submitting.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+**Client suggestions not appearing?**
+- Ensure you've typed at least 3 characters
+- Check that the client exists in the database
+- Wait for the 300ms debounce delay
+
+**Model specs not auto-filling?**
+- Verify the brand and model combination exists in the CSV catalog
+- Try manually entering specifications
+
+**Duplicate service alert?**
+- Review the existing service to confirm it's truly a duplicate
+- If it's a different repair, modify the work description to be more specific
+- Consider marking the old service as completed/delivered first
+
+## Related Workflows
+
+- [Managing Clients](/guides/managing-clients) - Client record management
+- [Processing Sales](/guides/processing-sales) - Collecting payment for completed services
+- [Permissions & Roles](/guides/permissions-roles) - Understanding the `servicios.crear` permission

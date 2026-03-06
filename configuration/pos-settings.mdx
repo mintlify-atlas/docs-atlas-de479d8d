@@ -1,0 +1,489 @@
+---
+title: POS Settings
+description: Configure IVA, billing, and ticket printing for your Point of Sale system
+icon: cash-register
+---
+
+## Overview
+
+The POS Settings page (`/configuracion/pos`) provides centralized configuration for:
+
+- IVA (sales tax) calculation
+- CFDI invoicing (Mexican electronic invoicing)
+- Receipt/ticket printing customization
+- Billing series and folio management
+
+All settings are saved automatically to `localStorage` and apply immediately.
+
+## IVA Configuration
+
+### Enable/Disable IVA
+
+<Steps>
+  <Step title="Navigate to POS Settings">
+    Go to **Configuracion > POS y Facturacion**
+  </Step>
+
+  <Step title="Toggle IVA">
+    In the "Configuracion de IVA" section, check or uncheck:
+
+    ```
+    ☑ Habilitar IVA (16%)
+    ```
+  </Step>
+
+  <Step title="Verify Status">
+    The status indicator will update:
+    - **IVA habilitado**: Tax will be added to all sales
+    - **IVA deshabilitado**: No tax calculation
+  </Step>
+</Steps>
+
+### How IVA Works
+
+<ParamField path="IVA Rate" type="number" default="16">
+  Fixed at 16% according to Mexican tax law.
+</ParamField>
+
+<ParamField path="Storage Key" type="string">
+  `pos_aplicar_iva` - Stores boolean value ("0" or "1")
+</ParamField>
+
+**Calculation Example:**
+
+```javascript
+const subtotal = 1000.00;
+const ivaRate = aplicarIVA ? 0.16 : 0;
+const iva = subtotal * ivaRate;  // 160.00
+const total = subtotal + iva;    // 1160.00
+```
+
+<Note>
+  IVA settings affect both POS calculations and printed tickets. Changes apply immediately to new transactions.
+</Note>
+
+## CFDI Invoice Configuration
+
+### Basic Settings
+
+<ParamField path="enabled" type="boolean" default="false">
+  Enable or disable invoicing functionality
+</ParamField>
+
+<ParamField path="emisionMode" type="enum" default="ticket_y_factura">
+  Invoice emission mode:
+  - `ticket_y_factura`: Print both ticket and invoice
+  - `factura_bajo_solicitud`: Invoice only when requested
+  - `solo_factura`: Invoice only (no ticket)
+</ParamField>
+
+<ParamField path="serie" type="string" default="A">
+  Invoice series (up to 8 characters, uppercase)
+</ParamField>
+
+<ParamField path="folioActual" type="number" default="1">
+  Current folio number (minimum: 1)
+</ParamField>
+
+<ParamField path="autoIncrement" type="boolean" default="true">
+  Automatically increment folio after each invoice
+</ParamField>
+
+### Issuer Information (Emisor)
+
+<ParamField path="razonSocial" type="string" default="LuisITRepair">
+  Business legal name
+</ParamField>
+
+<ParamField path="rfcEmisor" type="string" required>
+  Tax ID (RFC) - 12-13 characters, alphanumeric
+  
+  **Format:** `XAXX010101000`
+</ParamField>
+
+<ParamField path="regimenFiscal" type="enum" default="626">
+  Tax regime:
+  - `601`: General de Ley Personas Morales
+  - `612`: Personas Fisicas con Actividades Empresariales
+  - `626`: Regimen Simplificado de Confianza
+</ParamField>
+
+<ParamField path="codigoPostalEmisor" type="string" required>
+  Fiscal postal code (5 digits)
+  
+  **Example:** `06000`
+</ParamField>
+
+### CFDI Defaults
+
+<ParamField path="usoCFDI" type="enum" default="G03">
+  CFDI usage:
+  - `G03`: Gastos en general
+  - `G01`: Adquisicion de mercancias
+  - `S01`: Sin efectos fiscales
+</ParamField>
+
+<ParamField path="metodoPago" type="enum" default="PUE">
+  Payment method:
+  - `PUE`: Pago en una sola exhibicion (single payment)
+  - `PPD`: Pago en parcialidades o diferido (installments)
+</ParamField>
+
+<ParamField path="formaPago" type="enum" default="01">
+  Payment form:
+  - `01`: Efectivo (cash)
+  - `03`: Transferencia electronica
+  - `04`: Tarjeta de credito
+  - `28`: Tarjeta de debito
+</ParamField>
+
+### Client Requirements
+
+<ParamField path="requiereRFCCliente" type="boolean" default="true">
+  Require customer RFC before issuing invoice
+</ParamField>
+
+<ParamField path="requiereCorreoCliente" type="boolean" default="false">
+  Require customer email before issuing invoice
+</ParamField>
+
+### Test Mode
+
+<ParamField path="timbradoPruebas" type="boolean" default="true">
+  Enable test mode (no real stamping/timbrado)
+  
+  <Warning>
+    Disable this in production to issue valid legal invoices.
+  </Warning>
+</ParamField>
+
+### Terms and Conditions
+
+<ParamField path="terminosFactura" type="string">
+  Invoice terms and conditions text
+  
+  **Example:** `"Factura valida para deduccion conforme a legislacion vigente."`
+</ParamField>
+
+### Configuration Storage
+
+All billing settings are stored in:
+
+```javascript
+localStorage.getItem('pos_facturacion_config_v1')
+```
+
+**Structure:**
+
+```json
+{
+  "enabled": true,
+  "emisionMode": "ticket_y_factura",
+  "serie": "A",
+  "folioActual": 1,
+  "autoIncrement": true,
+  "razonSocial": "LuisITRepair",
+  "rfcEmisor": "XAXX010101000",
+  "regimenFiscal": "626",
+  "codigoPostalEmisor": "06000",
+  "usoCFDI": "G03",
+  "metodoPago": "PUE",
+  "formaPago": "01",
+  "requiereRFCCliente": true,
+  "requiereCorreoCliente": false,
+  "timbradoPruebas": true,
+  "terminosFactura": ""
+}
+```
+
+## Ticket Customization
+
+### Header Section
+
+<ParamField path="showLogo" type="boolean" default="true">
+  Display business logo at top of ticket
+</ParamField>
+
+<ParamField path="showBusinessData" type="boolean" default="true">
+  Show business name, address, and phone
+</ParamField>
+
+<ParamField path="businessName" type="string" default="LuisITRepair">
+  Business name to display on ticket
+</ParamField>
+
+<ParamField path="businessAddress" type="string">
+  Business address (e.g., "Calle 5 #123")
+</ParamField>
+
+<ParamField path="businessPhone" type="string">
+  Contact phone (e.g., "2711234567")
+</ParamField>
+
+### Content Options
+
+<ParamField path="showUnitPrice" type="boolean" default="true">
+  Show unit price for each item (e.g., "2 x $129.00")
+  
+  If disabled, only shows quantity (e.g., "2 pza")
+</ParamField>
+
+<ParamField path="fullDescription" type="boolean" default="true">
+  Print complete product description
+  
+  If disabled, truncates to 38 characters
+</ParamField>
+
+<ParamField path="showProductMeta" type="boolean" default="true">
+  Show product type label ("Producto" or "Servicio S/N04032601")
+</ParamField>
+
+### Client Section
+
+<ParamField path="showClientSection" type="boolean" default="true">
+  Display client information section
+</ParamField>
+
+<ParamField path="showClientName" type="boolean" default="true">
+  Show customer name (requires `showClientSection`)
+</ParamField>
+
+<ParamField path="showClientPhone" type="boolean" default="true">
+  Show customer phone (requires `showClientSection`)
+</ParamField>
+
+### Payment and Status
+
+<ParamField path="showPaymentSection" type="boolean" default="true">
+  Display payment method section
+</ParamField>
+
+<ParamField path="showStatusSection" type="boolean" default="true">
+  Show transaction status (Pagado, Pendiente, etc.)
+</ParamField>
+
+### Custom Messages
+
+<ParamField path="extraTopLines" type="string">
+  Additional lines after header (one per line)
+  
+  **Example:**
+  ```
+  Horario: Lun-Vie 9am-7pm
+  www.example.com
+  ```
+</ParamField>
+
+<ParamField path="extraBottomLines" type="string">
+  Additional lines before footer (one per line)
+</ParamField>
+
+<ParamField path="showLegend" type="boolean" default="true">
+  Display return/exchange legend
+</ParamField>
+
+<ParamField path="legendText" type="string" default="Se aceptan cambios con ticket en producto en buen estado.">
+  Return policy text
+</ParamField>
+
+<ParamField path="footerText" type="string" default="Gracias por tu preferencia.">
+  Footer message
+</ParamField>
+
+### Configuration Storage
+
+Ticket settings are stored in:
+
+```javascript
+localStorage.getItem('pos_ticket_config_v1')
+```
+
+**Full Structure:**
+
+```json
+{
+  "showLogo": true,
+  "showBusinessData": true,
+  "businessName": "LuisITRepair",
+  "businessAddress": "",
+  "businessPhone": "",
+  "showUnitPrice": true,
+  "fullDescription": true,
+  "showProductMeta": true,
+  "showClientSection": true,
+  "showClientName": true,
+  "showClientPhone": true,
+  "showPaymentSection": true,
+  "showStatusSection": true,
+  "showLegend": true,
+  "legendText": "Se aceptan cambios con ticket en producto en buen estado.",
+  "footerText": "Gracias por tu preferencia.",
+  "extraTopLines": "",
+  "extraBottomLines": ""
+}
+```
+
+## Testing Configuration
+
+### Test Ticket Printing
+
+<Steps>
+  <Step title="Configure Settings">
+    Make your desired changes to ticket configuration.
+  </Step>
+
+  <Step title="Click Test Print">
+    Click the **Probar impresion** button in the ticket preview section.
+  </Step>
+
+  <Step title="Review Output">
+    A test ticket with sample data will be generated:
+    - Sample products (Cable HDMI 2m, Servicio mantenimiento laptop)
+    - Test customer (Cliente de prueba, 2711234567)
+    - Current date and time
+    - Calculated totals with IVA (if enabled)
+  </Step>
+</Steps>
+
+### Preview Panel
+
+The right side of the configuration page shows a live preview of your ticket with all current settings applied.
+
+## Service Integration
+
+### Reading Configuration
+
+```javascript
+import { readTicketConfigStorage } from "../js/services/ticket_config";
+import { readFacturacionConfigStorage } from "../js/services/facturacion_config";
+
+const ticketCfg = readTicketConfigStorage();
+const factCfg = readFacturacionConfigStorage();
+```
+
+### Saving Configuration
+
+```javascript
+import { saveTicketConfigStorage } from "../js/services/ticket_config";
+import { saveFacturacionConfigStorage } from "../js/services/facturacion_config";
+
+const success = saveTicketConfigStorage({
+  ...ticketCfg,
+  businessName: "New Name"
+});
+
+const billingSuccess = saveFacturacionConfigStorage({
+  ...factCfg,
+  serie: "B"
+});
+```
+
+### Printing Tickets
+
+```javascript
+import { imprimirTicketVenta } from "../components/print_ticket_venta";
+import { readTicketConfigStorage } from "../js/services/ticket_config";
+
+imprimirTicketVenta({
+  ventaId: "VTA-001",
+  fecha: new Date(),
+  atendio: "Juan Perez",
+  cliente: { nombre: "Cliente", telefono: "2711234567" },
+  tipoPago: "efectivo",
+  productos: [...],
+  estado: "Pagado",
+  subtotal: 1000,
+  aplicaIVA: true,
+  ivaPorcentaje: 0.16,
+  iva: 160,
+  total: 1160,
+  ticketConfig: readTicketConfigStorage()
+});
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Configure IVA First">
+    Set up IVA before making sales. Changing it mid-operation can cause confusion with accounting.
+  </Accordion>
+
+  <Accordion title="Test Invoicing in Sandbox">
+    Keep `timbradoPruebas` enabled until you've validated your complete invoicing flow.
+  </Accordion>
+
+  <Accordion title="Validate RFC Format">
+    Ensure your RFC follows the correct format:
+    - Personas Fisicas: 13 characters (XAXX010101000)
+    - Personas Morales: 12 characters (ABC123456D01)
+  </Accordion>
+
+  <Accordion title="Back Up Configuration">
+    Periodically export your localStorage to back up settings:
+
+    ```javascript
+    const backup = {
+      iva: localStorage.getItem('pos_aplicar_iva'),
+      ticket: localStorage.getItem('pos_ticket_config_v1'),
+      billing: localStorage.getItem('pos_facturacion_config_v1')
+    };
+    console.log(JSON.stringify(backup, null, 2));
+    ```
+  </Accordion>
+
+  <Accordion title="Print Test Tickets">
+    Test your ticket configuration with different scenarios:
+    - With and without IVA
+    - Short and long product names
+    - Multiple products
+    - Service items with folio numbers
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Changes Not Saving">
+    Check browser console for localStorage errors:
+    
+    ```javascript
+    // Test localStorage access
+    try {
+      localStorage.setItem('test', '1');
+      localStorage.removeItem('test');
+      console.log('localStorage working');
+    } catch (e) {
+      console.error('localStorage blocked:', e);
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Ticket Preview Not Updating">
+    The preview uses `useMemo` hooks. If it's not updating:
+    1. Check that the state is actually changing
+    2. Verify the dependency arrays in the component
+    3. Hard refresh the page (Ctrl+Shift+R)
+  </Accordion>
+
+  <Accordion title="Invoice Folio Not Incrementing">
+    Ensure `autoIncrement` is enabled in billing configuration. The folio increments automatically after each successful invoice.
+  </Accordion>
+
+  <Accordion title="Settings Reset on Page Refresh">
+    This indicates localStorage is not persisting. Check:
+    - Browser privacy settings
+    - Incognito/private browsing mode (doesn't persist)
+    - Storage quota limits
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Appearance Settings" icon="palette" href="/configuration/appearance">
+    Customize colors, fonts, and visual theme
+  </Card>
+  <Card title="Billing Configuration" icon="file-invoice" href="/configuration/billing">
+    Configure CFDI invoicing and billing
+  </Card>
+</CardGroup>

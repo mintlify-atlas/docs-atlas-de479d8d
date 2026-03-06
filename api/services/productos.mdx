@@ -1,0 +1,349 @@
+---
+title: "Productos"
+description: "Product inventory management API reference"
+---
+
+# Productos API
+
+This module is part of the POS (Point of Sale) system and handles product inventory management. For the complete implementation, see [POS API](/api/services/pos).
+
+## Overview
+
+Product management functions are located in `POS_firebase.js` and provide CRUD operations for the product catalog.
+
+## Core Functions
+
+### obtenerProductos
+
+Retrieves all products from inventory.
+
+```javascript
+import { obtenerProductos } from './services/POS_firebase';
+
+const productos = await obtenerProductos();
+
+productos.forEach(producto => {
+  console.log(`${producto.nombre}: $${producto.precio} (Stock: ${producto.stock})`);
+});
+```
+
+<ResponseField name="result" type="array">
+  Array of product objects with `id` and all product properties
+</ResponseField>
+
+---
+
+### crearProducto
+
+Adds a new product to inventory.
+
+```javascript
+import { crearProducto } from './services/POS_firebase';
+
+await crearProducto({
+  nombre: 'Cable HDMI 2m',
+  precio: 120,
+  stock: 30,
+  categoria: 'Cables',
+  descripcion: 'Cable HDMI alta velocidad'
+});
+```
+
+<ParamField path="data" type="object" required>
+  <Expandable title="properties">
+    <ParamField path="nombre" type="string" required>
+      Product name
+    </ParamField>
+    
+    <ParamField path="precio" type="number" required>
+      Product price in local currency
+    </ParamField>
+    
+    <ParamField path="stock" type="number" required>
+      Initial stock quantity
+    </ParamField>
+    
+    <ParamField path="categoria" type="string">
+      Product category for organization
+    </ParamField>
+    
+    <ParamField path="descripcion" type="string">
+      Detailed product description
+    </ParamField>
+    
+    <ParamField path="codigo" type="string">
+      Product SKU or barcode
+    </ParamField>
+    
+    <ParamField path="proveedor" type="string">
+      Supplier name
+    </ParamField>
+    
+    <ParamField path="ubicacion" type="string">
+      Storage location
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Note:** The document ID is automatically stored within the document for easy reference.
+
+---
+
+### actualizarProducto
+
+Updates existing product information.
+
+```javascript
+import { actualizarProducto } from './services/POS_firebase';
+
+// Update price and stock
+await actualizarProducto('prod123', {
+  precio: 135,
+  stock: 25
+});
+
+// Update only description
+await actualizarProducto('prod123', {
+  descripcion: 'Cable HDMI 2.1 alta velocidad con Ethernet'
+});
+```
+
+<ParamField path="id" type="string" required>
+  Product document ID
+</ParamField>
+
+<ParamField path="data" type="object" required>
+  Object with fields to update (supports partial updates)
+</ParamField>
+
+---
+
+### eliminarProductoDB
+
+Permanently removes a product from inventory.
+
+```javascript
+import { eliminarProductoDB } from './services/POS_firebase';
+
+await eliminarProductoDB('prod123');
+```
+
+<ParamField path="id" type="string" required>
+  Product document ID to delete
+</ParamField>
+
+<Warning>
+  This operation is **permanent** and cannot be undone. Consider marking products as inactive or discontinued instead of deleting them to preserve sales history.
+</Warning>
+
+---
+
+### descontarStock
+
+Updates product stock after a sale.
+
+```javascript
+import { descontarStock } from './services/POS_firebase';
+
+// Set new stock level to 22
+await descontarStock('prod123', 22);
+```
+
+<ParamField path="productoId" type="string" required>
+  Product document ID
+</ParamField>
+
+<ParamField path="nuevoStock" type="number" required>
+  New stock quantity (absolute value, not delta)
+</ParamField>
+
+<Info>
+  This function expects the **final stock level**, not the quantity sold. Always calculate the new stock before calling:
+  
+  ```javascript
+  const stockActual = 25;
+  const cantidadVendida = 3;
+  await descontarStock('prod123', stockActual - cantidadVendida);
+  ```
+</Info>
+
+---
+
+## Product Data Structure
+
+```javascript
+{
+  id: 'prod123',              // Auto-generated document ID
+  nombre: 'Cable HDMI 2m',
+  precio: 120,
+  stock: 30,
+  categoria: 'Cables',
+  descripcion: 'Cable HDMI alta velocidad',
+  codigo: 'HDMI-2M-001',      // Optional SKU/barcode
+  proveedor: 'TechSupply',    // Optional supplier
+  ubicacion: 'Estante A3'     // Optional location
+}
+```
+
+## Common Workflows
+
+### Adding New Products
+
+```javascript
+import { crearProducto } from './services/POS_firebase';
+
+const nuevosProductos = [
+  {
+    nombre: 'Mouse Inalámbrico',
+    precio: 250,
+    stock: 15,
+    categoria: 'Periféricos'
+  },
+  {
+    nombre: 'Teclado Mecánico',
+    precio: 850,
+    stock: 8,
+    categoria: 'Periféricos'
+  }
+];
+
+for (const producto of nuevosProductos) {
+  await crearProducto(producto);
+}
+```
+
+### Checking Low Stock
+
+```javascript
+import { obtenerProductos } from './services/POS_firebase';
+
+const productos = await obtenerProductos();
+
+const lowStock = productos.filter(p => p.stock < 10);
+
+if (lowStock.length > 0) {
+  console.log('Productos con stock bajo:');
+  lowStock.forEach(p => {
+    console.log(`- ${p.nombre}: ${p.stock} unidades`);
+  });
+}
+```
+
+### Processing a Sale
+
+```javascript
+import { obtenerProductos, descontarStock } from './services/POS_firebase';
+
+async function procesarVenta(items) {
+  const productos = await obtenerProductos();
+  
+  for (const item of items) {
+    const producto = productos.find(p => p.id === item.productoId);
+    
+    if (!producto) {
+      throw new Error(`Producto no encontrado: ${item.productoId}`);
+    }
+    
+    if (producto.stock < item.cantidad) {
+      throw new Error(`Stock insuficiente para ${producto.nombre}`);
+    }
+    
+    const nuevoStock = producto.stock - item.cantidad;
+    await descontarStock(item.productoId, nuevoStock);
+    
+    console.log(`${producto.nombre}: ${producto.stock} → ${nuevoStock}`);
+  }
+}
+
+// Example usage
+await procesarVenta([
+  { productoId: 'prod1', cantidad: 2 },
+  { productoId: 'prod2', cantidad: 1 }
+]);
+```
+
+### Restocking Products
+
+```javascript
+import { obtenerProductos, actualizarProducto } from './services/POS_firebase';
+
+async function reabastecer(productoId, cantidad) {
+  const productos = await obtenerProductos();
+  const producto = productos.find(p => p.id === productoId);
+  
+  if (!producto) {
+    throw new Error('Producto no encontrado');
+  }
+  
+  const nuevoStock = producto.stock + cantidad;
+  
+  await actualizarProducto(productoId, {
+    stock: nuevoStock
+  });
+  
+  console.log(`Stock actualizado: ${producto.stock} → ${nuevoStock}`);
+}
+
+await reabastecer('prod123', 20);
+```
+
+## Category Management
+
+While categories are stored as strings within products, you can build category lists dynamically:
+
+```javascript
+import { obtenerProductos } from './services/POS_firebase';
+
+async function obtenerCategorias() {
+  const productos = await obtenerProductos();
+  
+  const categorias = [...new Set(
+    productos
+      .map(p => p.categoria)
+      .filter(Boolean)
+  )].sort();
+  
+  return categorias;
+}
+
+const categorias = await obtenerCategorias();
+console.log('Categorías disponibles:', categorias);
+
+// Filter products by category
+async function productosPorCategoria(categoria) {
+  const productos = await obtenerProductos();
+  return productos.filter(p => p.categoria === categoria);
+}
+
+const cables = await productosPorCategoria('Cables');
+```
+
+## Best Practices
+
+### Stock Management
+
+1. **Always check stock before sales**: Validate available quantity before processing transactions
+2. **Use transactions for critical updates**: For high-volume operations, consider using Firestore transactions
+3. **Track stock history**: Consider maintaining a separate collection for stock movements
+
+### Product Organization
+
+1. **Consistent naming**: Use clear, searchable product names
+2. **Category standardization**: Define standard categories and enforce them
+3. **SKU/barcode usage**: Implement unique product codes for inventory management
+
+### Data Integrity
+
+1. **Soft deletes**: Mark products as inactive instead of deleting
+2. **Audit trails**: Log product changes for accountability
+3. **Validation**: Validate prices and stock quantities before updates
+
+## Related APIs
+
+- [POS API](/api/services/pos) - Complete point of sale system including sales and customer management
+- [Clientes API](/api/services/clientes) - Customer management for loyalty programs
+
+## See Also
+
+- [Sales Management](/api/services/pos#sales-management)
+- [Customer Loyalty Points](/api/services/pos#customer-management)

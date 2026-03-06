@@ -1,0 +1,421 @@
+---
+title: Client Management
+description: Centralized customer database with service history and contact information
+icon: users
+---
+
+## Overview
+
+The Client Management module provides a centralized database for customer information, enabling quick lookups, service history tracking, and improved customer relationships.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Fast Search" icon="magnifying-glass">
+    Real-time filtering by name or phone number across all registered clients
+  </Card>
+  <Card title="Service History" icon="clock-rotate-left">
+    View all services associated with each client in chronological order
+  </Card>
+  <Card title="Auto-Creation" icon="user-plus">
+    Clients are automatically registered during service or sale creation
+  </Card>
+  <Card title="Data Persistence" icon="database">
+    Preferred device information and contact details are saved for future use
+  </Card>
+</CardGroup>
+
+## Client List Interface
+
+The main clients page displays all registered customers in a clean grid layout:
+
+```jsx
+// Component: src/pages/Clientes.jsx
+const [items, setItems] = useState([]);
+const [q, setQ] = useState(""); // search query
+
+useEffect(() => {
+  const data = await listarClientes({ max: 300 });
+  setItems(Array.isArray(data) ? data : []);
+}, []);
+```
+
+### Search and Filter
+
+The search bar provides instant filtering:
+
+```javascript
+const filtrados = useMemo(() => {
+  const s = q.trim().toLowerCase();
+  if (!s) return items;
+
+  return items.filter((c) => {
+    return (
+      (c.nombre || "").toLowerCase().includes(s) ||
+      (c.telefono || "").toString().includes(s)
+    );
+  });
+}, [q, items]);
+```
+
+<Note>
+  The search matches both names and phone numbers, making it easy to find clients even if you only know one piece of information.
+</Note>
+
+## Client Card Display
+
+Each client is shown in an interactive card:
+
+```jsx
+<div className="cliente-card" onClick={() => navigate(`/clientes/${c.id}`)}>
+  <div className="cliente-left">
+    <div className="cliente-avatar">
+      {c.nombre?.charAt(0)?.toUpperCase() || "?"}
+    </div>
+    
+    <div>
+      <div className="cliente-name">
+        {c.nombre || "Sin nombre"}
+      </div>
+      <div className="cliente-phone">
+        {c.telefono || "Sin teléfono"}
+      </div>
+      {c.direccion && (
+        <div className="cliente-address">
+          {c.direccion}
+        </div>
+      )}
+    </div>
+  </div>
+  
+  <div className="cliente-arrow">›</div>
+</div>
+```
+
+**Card Elements:**
+- Avatar with first letter of name
+- Client name (primary)
+- Phone number
+- Address (if available)
+- Right arrow for navigation
+
+## Client Data Structure
+
+Clients in Firestore contain the following fields:
+
+```typescript
+interface Cliente {
+  id: string;
+  nombre: string;
+  telefono: string;
+  direccion?: string;
+  numeroSeriePreferido?: string;
+  omitirNumeroSerie?: boolean;
+  puntos?: number;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+```
+
+### Core Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| nombre | string | Client full name |
+| telefono | string | 10-digit phone number |
+| direccion | string | Physical address (optional) |
+| numeroSeriePreferido | string | Last used device serial number |
+| omitirNumeroSerie | boolean | Preference to skip serial number entry |
+| puntos | number | Loyalty points balance |
+
+## Client Auto-Creation
+
+Clients are automatically created in two scenarios:
+
+### 1. During Service Registration
+
+```javascript
+// In Hoja_service.jsx
+if (selectedCliente?.id) {
+  // Update existing client
+  await actualizarCliente(selectedCliente.id, {
+    nombre: form.nombre,
+    telefono: form.telefono,
+    direccion: form.direccion,
+    numeroSeriePreferido: form.omitirNumeroSerie ? "" : form.numeroSerie,
+    omitirNumeroSerie: !!form.omitirNumeroSerie
+  });
+} else {
+  // Create new client
+  const nuevo = await crearCliente({
+    nombre: form.nombre,
+    telefono: form.telefono,
+    direccion: form.direccion,
+    numeroSeriePreferido: form.omitirNumeroSerie ? "" : form.numeroSerie,
+    omitirNumeroSerie: !!form.omitirNumeroSerie
+  });
+  clienteIdFinal = nuevo.id;
+}
+```
+
+### 2. During POS Transactions
+
+```javascript
+// In POS.jsx
+const cliente = await buscarClientePorTelefono(clienteTelefono);
+
+if (clienteData) {
+  // Use existing client for points
+  await sumarPuntosCliente(clienteData.id, puntosGenerados);
+}
+```
+
+<Tip>
+  Clients don't need to be explicitly created. The system handles this automatically when you register services or sales.
+</Tip>
+
+## Client Lookup Methods
+
+The system provides multiple ways to find clients:
+
+### By Name (Fuzzy Search)
+
+```javascript
+export async function buscarClientesSimilares(
+  nombre,
+  { maxFetch = 50, maxReturn = 8 } = {}
+) {
+  const q = query(
+    collection(db, "clientes"),
+    orderBy("nombre"),
+    limit(maxFetch)
+  );
+  
+  const snapshot = await getDocs(q);
+  const todos = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  
+  // Fuzzy matching algorithm
+  const scored = todos.map(cliente => ({
+    ...cliente,
+    score: calcularSimilitud(nombre, cliente.nombre)
+  }));
+  
+  return scored
+    .filter(c => c.score > 0.3)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxReturn);
+}
+```
+
+### By Phone (Exact Match)
+
+```javascript
+export async function buscarClientePorTelefono(telefono) {
+  const q = query(
+    collection(db, "clientes"),
+    where("telefono", "==", telefono),
+    limit(1)
+  );
+  
+  const snapshot = await getDocs(q);
+  return snapshot.empty ? null : {
+    id: snapshot.docs[0].id,
+    ...snapshot.docs[0].data()
+  };
+}
+```
+
+### By ID (Direct Lookup)
+
+```javascript
+export async function obtenerClientePorId(clienteId) {
+  const docRef = doc(db, "clientes", clienteId);
+  const docSnap = await getDoc(docRef);
+  
+  return docSnap.exists() ? {
+    id: docSnap.id,
+    ...docSnap.data()
+  } : null;
+}
+```
+
+## Client Detail View
+
+Click any client card to navigate to the detail page:
+
+```javascript
+onClick={() => navigate(`/clientes/${c.id}`)}
+```
+
+The detail view shows:
+- Complete contact information
+- Service history
+- Device preferences
+- Loyalty points balance
+- Quick action buttons:
+  - Create new service for this client
+  - Edit client information
+  - View purchase history
+
+## Client Update Flow
+
+When client information is modified:
+
+```javascript
+await actualizarCliente(clienteId, {
+  nombre: updatedNombre,
+  telefono: updatedTelefono,
+  direccion: updatedDireccion,
+  updatedAt: serverTimestamp()
+});
+```
+
+<Note>
+  Client updates are synced across all related services and sales automatically.
+</Note>
+
+## Serial Number Preferences
+
+The system remembers device serial numbers:
+
+```javascript
+// Auto-fill from previous service
+if (cli?.numeroSeriePreferido) {
+  setForm(prev => ({
+    ...prev,
+    numeroSerie: cli.numeroSeriePreferido,
+    omitirNumeroSerie: cli.omitirNumeroSerie
+  }));
+}
+
+// Update preference on new service
+await actualizarCliente(clienteId, {
+  numeroSeriePreferido: form.numeroSerie,
+  omitirNumeroSerie: form.omitirNumeroSerie
+});
+```
+
+This improves data entry speed for repeat customers.
+
+## Loyalty Points System
+
+Clients automatically earn points through purchases:
+
+```javascript
+// Generate points (1 point per $10)
+const puntosGenerados = Math.floor(total / 10);
+
+// Add to client account
+await sumarPuntosCliente(clienteData.id, puntosGenerados);
+
+// Redeem points (subtract)
+if (usarPuntos && descuentoPuntos > 0) {
+  await sumarPuntosCliente(clienteData.id, -descuentoPuntos);
+}
+```
+
+<AccordionGroup>
+  <Accordion title="Point Generation Rules">
+    - 1 point = $10 MXN spent
+    - Points are rounded down (150 pesos = 15 points)
+    - Points earned after discounts are applied
+    - IVA is included in point calculation
+  </Accordion>
+  
+  <Accordion title="Point Redemption">
+    - 1 point = $1 MXN discount
+    - Maximum redemption: sale subtotal
+    - Cannot redeem more points than available
+    - Redeemed points are immediately deducted
+  </Accordion>
+</AccordionGroup>
+
+## Navigation Patterns
+
+### From Client List to Service
+
+```javascript
+// In client detail page
+const crearServicioParaCliente = () => {
+  navigate("/hoja-service", {
+    state: {
+      prefillCliente: {
+        id: cliente.id,
+        nombre: cliente.nombre,
+        telefono: cliente.telefono,
+        direccion: cliente.direccion,
+        numeroSeriePreferido: cliente.numeroSeriePreferido,
+        omitirNumeroSerie: cliente.omitirNumeroSerie
+      }
+    }
+  });
+};
+```
+
+### Back Navigation
+
+```javascript
+const volverPantallaAnterior = () => {
+  if (window.history.length > 1) {
+    navigate(-1);
+  } else {
+    navigate("/home");
+  }
+};
+```
+
+## UI Animations
+
+The clients page includes subtle animations:
+
+```jsx
+<div className="clientes-hero-animated">
+  <div className="bubbles">
+    <span></span>
+    <span></span>
+    <span></span>
+  </div>
+  
+  <div className="clientes-hero-content">
+    <h1>Clientes</h1>
+    <p>Gestión y seguimiento de clientes</p>
+  </div>
+</div>
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Data Consistency" icon="database">
+    Always use the autocomplete search when creating services to avoid duplicate client entries
+  </Card>
+  <Card title="Contact Updates" icon="phone">
+    Update phone numbers and addresses when clients provide new information
+  </Card>
+  <Card title="Privacy" icon="shield">
+    Keep client data secure and only accessible to authorized staff
+  </Card>
+  <Card title="History Review" icon="clock">
+    Check client service history before quoting prices for repeat repairs
+  </Card>
+</CardGroup>
+
+## Technical Details
+
+The client management system uses:
+
+```javascript
+import { listarClientes } from "../js/services/clientes_firestore";
+import { useNavigate } from "react-router-dom";
+import "../css/clientes.css";
+```
+
+**Key Files:**
+- `src/pages/Clientes.jsx` - Main list view
+- `src/js/services/clientes_firestore.js` - Data access layer
+- `src/css/clientes.css` - Styling
+
+**Firebase Collection:**
+- Collection: `clientes`
+- Indexes: `nombre`, `telefono`
+- Security rules: Requires authentication

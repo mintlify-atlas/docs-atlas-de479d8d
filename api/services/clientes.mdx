@@ -1,0 +1,297 @@
+---
+title: "Clientes"
+description: "Customer management API with fuzzy search, normalization, and similarity matching"
+---
+
+# Clientes API
+
+The `clientes_firestore.js` module provides functions for managing customer records with intelligent text normalization and fuzzy search capabilities.
+
+## Functions
+
+### crearCliente
+
+Creates a new customer record with automatic text normalization for efficient searching.
+
+```javascript
+import { crearCliente } from './services/clientes_firestore';
+
+const result = await crearCliente({
+  nombre: 'Juan Pérez García',
+  telefono: '5551234567',
+  direccion: 'Calle Principal 123',
+  numeroSeriePreferido: 'ABC123',
+  omitirNumeroSerie: false
+});
+
+console.log(result); // { id: 'abc123' }
+```
+
+<ParamField path="data" type="object" required>
+  Customer information
+  
+  <Expandable title="properties">
+    <ParamField path="nombre" type="string" required>
+      Customer full name
+    </ParamField>
+    
+    <ParamField path="telefono" type="string" required>
+      Customer phone number
+    </ParamField>
+    
+    <ParamField path="direccion" type="string">
+      Customer address
+    </ParamField>
+    
+    <ParamField path="numeroSeriePreferido" type="string">
+      Preferred serial number (ignored if `omitirNumeroSerie` is true)
+    </ParamField>
+    
+    <ParamField path="omitirNumeroSerie" type="boolean" default="false">
+      Skip serial number requirement for this customer
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="id" type="string">
+  The created customer document ID
+</ResponseField>
+
+**Note:** The function automatically generates normalized search fields:
+- `nombreNorm` - Normalized name with spaces for prefix search
+- `nombreCompact` - Compacted name without spaces for fuzzy matching
+
+---
+
+### actualizarCliente
+
+Updates an existing customer record with automatic normalization.
+
+```javascript
+import { actualizarCliente } from './services/clientes_firestore';
+
+await actualizarCliente('abc123', {
+  telefono: '5559876543',
+  direccion: 'Nueva Calle 456',
+  omitirNumeroSerie: true
+});
+```
+
+<ParamField path="id" type="string" required>
+  The customer document ID
+</ParamField>
+
+<ParamField path="patch" type="object" required>
+  Object containing fields to update (partial update supported)
+</ParamField>
+
+**Special behavior:**
+- Automatically clears `numeroSeriePreferido` when `omitirNumeroSerie` is set to `true`
+- Regenerates normalized search fields if name changes
+- Updates `updatedAt` timestamp
+
+---
+
+### buscarClientesSimilares
+
+Searches for customers using fuzzy text matching with Levenshtein distance ranking.
+
+```javascript
+import { buscarClientesSimilares } from './services/clientes_firestore';
+
+const resultados = await buscarClientesSimilares('Juan Perez', {
+  maxFetch: 50,
+  maxReturn: 8
+});
+
+resultados.forEach(cliente => {
+  console.log(`${cliente.nombre} (dist: ${cliente._dist})`);
+});
+```
+
+<ParamField path="input" type="string" required>
+  Search query (name or partial name)
+</ParamField>
+
+<ParamField path="options" type="object">
+  Search configuration
+  
+  <Expandable title="properties">
+    <ParamField path="maxFetch" type="number" default="50">
+      Maximum documents to fetch from database
+    </ParamField>
+    
+    <ParamField path="maxReturn" type="number" default="8">
+      Maximum results to return after ranking
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="result" type="array">
+  Array of customer objects sorted by similarity (closest match first), with `_dist` field indicating edit distance
+</ResponseField>
+
+**Search algorithm:**
+1. Normalizes input text (removes accents, lowercases, handles camelCase)
+2. Performs prefix search on `nombreNorm` field
+3. Falls back to full collection scan for legacy records
+4. Ranks results using Levenshtein distance on compacted names
+5. Returns top matches sorted by similarity
+
+---
+
+### listarClientes
+
+Lists customers ordered by most recently updated.
+
+```javascript
+import { listarClientes } from './services/clientes_firestore';
+
+const clientes = await listarClientes({ max: 100 });
+
+clientes.forEach(cliente => {
+  console.log(`${cliente.nombre} - ${cliente.telefono}`);
+});
+```
+
+<ParamField path="options" type="object">
+  <ParamField path="max" type="number" default="100">
+    Maximum number of customers to return
+  </ParamField>
+</ParamField>
+
+<ResponseField name="result" type="array">
+  Array of customer objects ordered by `updatedAt` (newest first)
+</ResponseField>
+
+---
+
+### obtenerClientePorId
+
+Retrieves a single customer by document ID.
+
+```javascript
+import { obtenerClientePorId } from './services/clientes_firestore';
+
+const cliente = await obtenerClientePorId('abc123');
+
+if (cliente) {
+  console.log(`Name: ${cliente.nombre}`);
+  console.log(`Phone: ${cliente.telefono}`);
+} else {
+  console.log('Cliente not found');
+}
+```
+
+<ParamField path="id" type="string" required>
+  The customer document ID
+</ParamField>
+
+<ResponseField name="result" type="object | null">
+  Customer object with `id` and all customer data, or `null` if not found
+</ResponseField>
+
+---
+
+### listarServiciosPorClienteId
+
+Lists all services associated with a specific customer.
+
+```javascript
+import { listarServiciosPorClienteId } from './services/clientes_firestore';
+
+const servicios = await listarServiciosPorClienteId('abc123');
+
+servicios.forEach(servicio => {
+  console.log(`Folio: ${servicio.folio}, Status: ${servicio.status}`);
+});
+```
+
+<ParamField path="clienteId" type="string" required>
+  The customer document ID
+</ParamField>
+
+<ResponseField name="result" type="array">
+  Array of service objects for the specified customer, sorted by creation date (newest first)
+</ResponseField>
+
+---
+
+## Utility Functions
+
+### normalizarTexto
+
+Normalizes text for searching by removing accents, lowercasing, and handling camelCase.
+
+```javascript
+import { normalizarTexto } from './services/clientes_firestore';
+
+const normalized = normalizarTexto('JuánPérez García');
+console.log(normalized); // 'juan perez garcia'
+```
+
+<ParamField path="raw" type="string" required>
+  Text to normalize
+</ParamField>
+
+<ResponseField name="result" type="string">
+  Normalized text with spaces, lowercase, no accents
+</ResponseField>
+
+---
+
+### compact
+
+Compacts text by removing all spaces (useful for fuzzy matching).
+
+```javascript
+import { compact } from './services/clientes_firestore';
+
+const compacted = compact('Juan Pérez García');
+console.log(compacted); // 'juanperezgarcia'
+```
+
+<ParamField path="raw" type="string" required>
+  Text to compact
+</ParamField>
+
+<ResponseField name="result" type="string">
+  Normalized text without spaces
+</ResponseField>
+
+---
+
+## Data Structure
+
+Each customer document contains:
+
+```javascript
+{
+  id: 'abc123',
+  nombre: 'Juan Pérez García',
+  nombreNorm: 'juan perez garcia',      // for prefix search
+  nombreCompact: 'juanperezgarcia',     // for fuzzy matching
+  telefono: '5551234567',
+  direccion: 'Calle Principal 123',
+  numeroSeriePreferido: 'ABC123',
+  omitirNumeroSerie: false,
+  createdAt: Timestamp,
+  updatedAt: Timestamp,
+  puntos: 0                              // loyalty points
+}
+```
+
+## Search Implementation Details
+
+The fuzzy search uses **Levenshtein distance** algorithm to calculate edit distance between strings:
+
+- **Distance 0**: Exact match
+- **Distance 1-2**: Very similar (typo, missing letter)
+- **Distance 3-5**: Moderately similar
+- **Distance 6+**: Less similar
+
+Results are sorted by distance, showing closest matches first. This enables finding customers even with:
+- Typos
+- Missing accents
+- Incomplete names
+- Different spacing

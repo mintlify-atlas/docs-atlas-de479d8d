@@ -1,0 +1,455 @@
+---
+title: "Servicios"
+description: "Service management API for handling repair orders, status tracking, and folio generation"
+---
+
+# Servicios API
+
+The `servicios_firestore.js` module provides comprehensive functions for managing repair service orders, including creation, updates, duplicate detection, and status tracking.
+
+## Functions
+
+### guardarServicio
+
+Creates a new service order with automatic folio generation and duplicate detection.
+
+```javascript
+import { guardarServicio } from './services/servicios_firestore';
+
+const result = await guardarServicio({
+  clienteId: 'abc123',
+  nombre: 'Juan Pérez',
+  direccion: 'Calle Principal 123',
+  telefono: '5551234567',
+  tipoDispositivo: 'laptop',
+  marca: 'HP',
+  modelo: 'Pavilion',
+  numeroSerie: 'SN12345',
+  trabajo: 'No enciende',
+  costo: '500',
+  procesador: 'Intel i5',
+  ram: '8GB',
+  disco: '500GB'
+});
+
+console.log(result); // { id: 'doc123', folio: 'HP-001' }
+```
+
+<ParamField path="form" type="object" required>
+  The service form data object
+  
+  <Expandable title="properties">
+    <ParamField path="clienteId" type="string">
+      Client document ID reference
+    </ParamField>
+    
+    <ParamField path="nombre" type="string" required>
+      Customer name
+    </ParamField>
+    
+    <ParamField path="direccion" type="string">
+      Customer address
+    </ParamField>
+    
+    <ParamField path="telefono" type="string" required>
+      Customer phone number
+    </ParamField>
+    
+    <ParamField path="tipoDispositivo" type="string" required>
+      Device type: `laptop`, `pc`, `impresora`, or `monitor`
+    </ParamField>
+    
+    <ParamField path="marca" type="string" required>
+      Device brand
+    </ParamField>
+    
+    <ParamField path="modelo" type="string" required>
+      Device model
+    </ParamField>
+    
+    <ParamField path="numeroSerie" type="string">
+      Serial number (omitted if `omitirNumeroSerie` is true)
+    </ParamField>
+    
+    <ParamField path="omitirNumeroSerie" type="boolean">
+      Skip serial number requirement
+    </ParamField>
+    
+    <ParamField path="trabajo" type="string" required>
+      Description of work/issue
+    </ParamField>
+    
+    <ParamField path="costo" type="string">
+      Service cost (empty if `precioDespues` is true)
+    </ParamField>
+    
+    <ParamField path="precioDespues" type="boolean">
+      Price to be determined later
+    </ParamField>
+    
+    <ParamField path="caracteristicasPendientes" type="boolean">
+      Device characteristics pending
+    </ParamField>
+    
+    <ParamField path="folio" type="string">
+      Manual folio (auto-generated if not provided)
+    </ParamField>
+  </Expandable>
+  
+  <Expandable title="laptop/pc specific fields">
+    <ParamField path="procesador" type="string">
+      Processor specification
+    </ParamField>
+    
+    <ParamField path="ram" type="string">
+      RAM specification
+    </ParamField>
+    
+    <ParamField path="disco" type="string">
+      Storage specification
+    </ParamField>
+    
+    <ParamField path="estadoPantalla" type="string">
+      Screen condition
+    </ParamField>
+    
+    <ParamField path="estadoTeclado" type="string">
+      Keyboard condition
+    </ParamField>
+    
+    <ParamField path="estadoMouse" type="string">
+      Mouse condition
+    </ParamField>
+    
+    <ParamField path="funciona" type="string">
+      Working status
+    </ParamField>
+    
+    <ParamField path="enciendeEquipo" type="string">
+      Powers on status
+    </ParamField>
+    
+    <ParamField path="contrasenaEquipo" type="string">
+      Device password
+    </ParamField>
+  </Expandable>
+  
+  <Expandable title="impresora specific fields">
+    <ParamField path="tipoImpresora" type="string">
+      Printer type
+    </ParamField>
+    
+    <ParamField path="imprime" type="string">
+      Printing status
+    </ParamField>
+    
+    <ParamField path="condicionesImpresora" type="string">
+      Printer conditions
+    </ParamField>
+  </Expandable>
+  
+  <Expandable title="monitor specific fields">
+    <ParamField path="tamanoMonitor" type="string">
+      Monitor size
+    </ParamField>
+    
+    <ParamField path="colores" type="string">
+      Color display status
+    </ParamField>
+    
+    <ParamField path="condicionesMonitor" type="string">
+      Monitor conditions
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="id" type="string">
+  The created service document ID
+</ResponseField>
+
+<ResponseField name="folio" type="string">
+  The generated or provided folio number
+</ResponseField>
+
+**Throws:**
+- `Error` with code `DUPLICATE_SERVICE` if an active duplicate service exists
+- `Error` if folio generation fails
+- `Error` if folio already exists
+
+---
+
+### buscarServicioDuplicadoActivo
+
+Searches for active duplicate services based on device and customer information.
+
+```javascript
+import { buscarServicioDuplicadoActivo } from './services/servicios_firestore';
+
+const duplicado = await buscarServicioDuplicadoActivo({
+  telefono: '5551234567',
+  tipoDispositivo: 'laptop',
+  marca: 'HP',
+  modelo: 'Pavilion',
+  trabajo: 'No enciende'
+});
+
+if (duplicado) {
+  console.log(`Duplicate found: ${duplicado.folio}`);
+}
+```
+
+<ParamField path="formLike" type="object" required>
+  Object with service data to check for duplicates
+  
+  <Expandable title="properties">
+    <ParamField path="telefono" type="string" required>
+      Customer phone number
+    </ParamField>
+    
+    <ParamField path="tipoDispositivo" type="string" required>
+      Device type
+    </ParamField>
+    
+    <ParamField path="marca" type="string">
+      Device brand
+    </ParamField>
+    
+    <ParamField path="modelo" type="string">
+      Device model
+    </ParamField>
+    
+    <ParamField path="trabajo" type="string">
+      Work description
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="result" type="object | null">
+  Returns the duplicate service object if found, or `null` if no duplicate exists
+</ResponseField>
+
+---
+
+### buscarServicioPorFolio
+
+Searches for a service by its folio number using an indexed lookup.
+
+```javascript
+import { buscarServicioPorFolio } from './services/servicios_firestore';
+
+const servicio = await buscarServicioPorFolio('HP-001');
+
+if (servicio) {
+  console.log(`Service ID: ${servicio.id}`);
+  console.log(`Status: ${servicio.status}`);
+}
+```
+
+<ParamField path="folio" type="string" required>
+  The folio number to search for
+</ParamField>
+
+<ResponseField name="result" type="object | null">
+  Returns the service object with `id` and all service data, or `null` if not found
+</ResponseField>
+
+---
+
+### listarServiciosPendientes
+
+Lists all services that are not in a final status (entregado, cancelado, no_reparable).
+
+```javascript
+import { listarServiciosPendientes } from './services/servicios_firestore';
+
+const pendientes = await listarServiciosPendientes();
+
+pendientes.forEach(servicio => {
+  console.log(`${servicio.folio}: ${servicio.status}`);
+});
+```
+
+<ResponseField name="result" type="array">
+  Array of service objects ordered by creation date (newest first)
+</ResponseField>
+
+---
+
+### listarServiciosHistorial
+
+Lists all services in final status (entregado, cancelado, no_reparable).
+
+```javascript
+import { listarServiciosHistorial } from './services/servicios_firestore';
+
+const historial = await listarServiciosHistorial();
+
+console.log(`Total completed services: ${historial.length}`);
+```
+
+<ResponseField name="result" type="array">
+  Array of completed service objects ordered by creation date (newest first)
+</ResponseField>
+
+---
+
+### actualizarServicioPorId
+
+Updates an existing service by its document ID. Prevents folio changes and locks services in final status.
+
+```javascript
+import { actualizarServicioPorId } from './services/servicios_firestore';
+
+const updated = await actualizarServicioPorId('doc123', {
+  status: 'en_reparacion',
+  costo: '750'
+});
+
+console.log(updated);
+```
+
+<ParamField path="id" type="string" required>
+  The service document ID
+</ParamField>
+
+<ParamField path="data" type="object" required>
+  Object containing fields to update
+</ParamField>
+
+<ResponseField name="result" type="object">
+  The updated service object with `id` and all current data
+</ResponseField>
+
+**Special behavior:**
+- Automatically sets `fechaEntregado` timestamp when status changes to "entregado"
+- Clears `fechaEntregado` when status changes away from "entregado"
+- Locks service and sets `locked: true` when reaching final status
+- Prevents folio changes on existing services
+
+**Throws:**
+- `Error` if service not found
+- `Error` if attempting to change folio
+
+---
+
+### listarServiciosPorClienteId
+
+Lists all services associated with a specific client ID.
+
+```javascript
+import { listarServiciosPorClienteId } from './services/servicios_firestore';
+
+const servicios = await listarServiciosPorClienteId('abc123');
+
+servicios.forEach(s => {
+  console.log(`Folio: ${s.folio}, Status: ${s.status}`);
+});
+```
+
+<ParamField path="clienteId" type="string" required>
+  The client document ID
+</ParamField>
+
+<ResponseField name="result" type="array">
+  Array of service objects for the specified client, ordered by creation date (newest first)
+</ResponseField>
+
+---
+
+### guardarOActualizarPorFolio
+
+Upsert operation: creates a new service if folio doesn't exist, or updates existing service.
+
+```javascript
+import { guardarOActualizarPorFolio } from './services/servicios_firestore';
+
+const result = await guardarOActualizarPorFolio({
+  folio: 'HP-001',
+  nombre: 'Juan Pérez',
+  telefono: '5551234567',
+  tipoDispositivo: 'laptop',
+  marca: 'HP',
+  modelo: 'Pavilion',
+  trabajo: 'No enciende',
+  costo: '500'
+});
+
+if (result.mode === 'created') {
+  console.log('New service created');
+} else {
+  console.log('Existing service updated');
+}
+```
+
+<ParamField path="form" type="object" required>
+  Service form data (same structure as `guardarServicio`)
+</ParamField>
+
+<ResponseField name="id" type="string">
+  The service document ID
+</ResponseField>
+
+<ResponseField name="folio" type="string">
+  The folio number
+</ResponseField>
+
+<ResponseField name="mode" type="string">
+  Either `"created"` or `"updated"`
+</ResponseField>
+
+---
+
+## Status Values
+
+Services track their lifecycle through status values:
+
+- `pendiente` - Initial status, awaiting diagnosis
+- `en_reparacion` - Currently being repaired
+- `entregado` - **Final status** - Delivered to customer
+- `cancelado` - **Final status** - Service cancelled
+- `no_reparable` - **Final status** - Cannot be repaired
+
+**Final statuses** automatically lock the service and prevent further modifications.
+
+## Data Structure
+
+Each service document contains:
+
+```javascript
+{
+  id: 'doc123',
+  folio: 'HP-001',
+  clienteId: 'abc123',
+  nombre: 'Juan Pérez',
+  direccion: 'Calle Principal 123',
+  telefono: '5551234567',
+  
+  tipoDispositivo: 'laptop',
+  marca: 'HP',
+  modelo: 'Pavilion',
+  numeroSerie: 'SN12345',
+  omitirNumeroSerie: false,
+  
+  trabajo: 'No enciende',
+  trabajoNorm: 'no enciende', // normalized for search
+  costo: '500',
+  precioDespues: false,
+  caracteristicasPendientes: false,
+  
+  status: 'pendiente',
+  entregado: false,
+  fechaEntregado: null, // timestamp when delivered
+  locked: false,
+  lockedReason: null,
+  
+  dedupeKey: 'tel|tipo|marca|modelo', // for duplicate detection
+  
+  createdAt: Timestamp,
+  updatedAt: Timestamp,
+  
+  // Device-specific fields
+  laptopPc: { /* ... */ },
+  impresora: { /* ... */ },
+  monitor: { /* ... */ }
+}
+```

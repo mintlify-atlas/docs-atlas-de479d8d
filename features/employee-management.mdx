@@ -1,0 +1,659 @@
+---
+title: Employee Management
+description: User administration with role-based access control and granular permissions
+icon: user-gear
+---
+
+## Overview
+
+The Employee Management module provides complete control over system users, roles, and permissions. It enables administrators to create staff accounts, assign roles, and configure granular access controls for different parts of the system.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Role-Based Access" icon="user-tag">
+    Three pre-defined roles (Administrator, Technician, Cashier) with default permission sets
+  </Card>
+  <Card title="Granular Permissions" icon="key">
+    Fine-grained access control with individual permission toggles for each system feature
+  </Card>
+  <Card title="User Lifecycle" icon="user-plus">
+    Create accounts with Firebase Authentication, edit details, activate/deactivate users
+  </Card>
+  <Card title="Security" icon="shield-halved">
+    Permission validation on backend, secure password requirements, and audit tracking
+  </Card>
+  <Card title="Permission Editor" icon="sliders">
+    Visual permission management interface with role presets and custom configurations
+  </Card>
+  <Card title="Status Control" icon="toggle-on">
+    Active/Inactive status management without account deletion to preserve history
+  </Card>
+</CardGroup>
+
+## User Data Structure
+
+### Employee Record (Firestore)
+
+```typescript
+interface Empleado {
+  id: string;
+  uid: string; // Firebase Auth UID
+  nombre: string;
+  telefono: string;
+  correo: string;
+  rol: "Administrador" | "Tecnico" | "Cajero";
+  estado: "Activo" | "Inactivo";
+  permisos: PermisosMap;
+  createdAt: Timestamp;
+}
+```
+
+### Authorization Record (Firestore)
+
+```typescript
+interface Autorizado {
+  uid: string; // Document ID
+  activo: boolean;
+  rol: string;
+  permisos: PermisosMap;
+}
+```
+
+<Note>
+  Employee data is stored in two collections: `empleados` (user profile) and `autorizados` (authentication/permissions). This separation enables fast permission checks.
+</Note>
+
+## Default Roles
+
+### Administrador (Administrator)
+
+Full system access including:
+- Employee management (create, edit, delete users)
+- Complete POS access
+- Service creation and modification
+- Inventory management
+- Reports and analytics
+- Cash register operations
+
+### Tecnico (Technician)
+
+Service-focused permissions:
+- Create and edit services
+- View client information
+- Limited inventory access (view only)
+- Cannot access POS or cash register
+- Cannot manage employees
+
+### Cajero (Cashier)
+
+Sales and customer-facing operations:
+- Full POS access
+- Process sales and payments
+- Open/close cash register
+- View reports (sales only)
+- Cannot manage services or employees
+- Limited inventory modifications
+
+## Permission System
+
+The system uses a comprehensive permission catalog:
+
+```javascript
+export const PERMISOS_CATALOGO = [
+  {
+    key: "pos.vender",
+    label: "POS: Realizar ventas",
+    description: "Permite procesar ventas en el punto de venta"
+  },
+  {
+    key: "pos.devoluciones",
+    label: "POS: Gestionar devoluciones",
+    description: "Permite procesar devoluciones y reembolsos"
+  },
+  {
+    key: "inventario.ver",
+    label: "Inventario: Ver productos",
+    description: "Permite visualizar el catalogo de productos"
+  },
+  {
+    key: "inventario.modificar",
+    label: "Inventario: Modificar stock y precios",
+    description: "Permite editar productos, stock y precios"
+  },
+  {
+    key: "servicios.crear",
+    label: "Servicios: Registrar nuevos",
+    description: "Permite crear ordenes de servicio tecnico"
+  },
+  {
+    key: "servicios.modificar",
+    label: "Servicios: Modificar existentes",
+    description: "Permite editar servicios en progreso"
+  },
+  {
+    key: "clientes.ver",
+    label: "Clientes: Ver informacion",
+    description: "Permite acceder a datos de clientes"
+  },
+  {
+    key: "clientes.modificar",
+    label: "Clientes: Modificar datos",
+    description: "Permite editar informacion de clientes"
+  },
+  {
+    key: "reportes.ver",
+    label: "Reportes: Ver analytics",
+    description: "Permite visualizar reportes y graficas"
+  },
+  {
+    key: "reportes.caja",
+    label: "Reportes: Gestion de caja",
+    description: "Permite cerrar caja y ver cortes"
+  },
+  {
+    key: "empleados.gestionar",
+    label: "Empleados: Administrar usuarios",
+    description: "Permite crear, editar y eliminar empleados"
+  }
+];
+```
+
+### Permission Structure
+
+Permissions use dot notation for hierarchical organization:
+
+```
+module.action
+  │      │
+  │      └─ Specific action (ver, modificar, crear, gestionar)
+  └──────── Feature area (pos, inventario, servicios, etc.)
+```
+
+## Creating Employees
+
+### User Creation Flow
+
+1. Click "+ Nuevo Empleado" button (requires `empleados.gestionar` permission)
+2. Fill in the employee form:
+
+```jsx
+const [form, setForm] = useState({
+  nombre: "",
+  telefono: "",
+  correo: "",
+  rol: "",
+  estado: "Activo",
+  password: "",
+  permisos: permisosBasePorRol("")
+});
+```
+
+3. Select role - permissions are auto-populated
+4. Optionally customize permissions via "Checks de acceso" button
+5. Click "Guardar"
+
+### Backend Process
+
+```javascript
+const handleSubmit = async () => {
+  // Validation
+  if (!form.nombre || !form.correo || !form.rol || !form.password) {
+    alert("Completa los campos obligatorios");
+    return;
+  }
+
+  const permisosFinal = normalizarPermisos(form.rol, form.permisos || {});
+
+  // Create Firebase Auth user
+  const adminActual = auth.currentUser;
+  const userCredential = await createUserWithEmailAndPassword(
+    auth,
+    form.correo,
+    form.password
+  );
+  const uid = userCredential.user.uid;
+
+  // Create employee profile
+  await addDoc(collection(db, "empleados"), {
+    uid,
+    nombre: form.nombre,
+    telefono: form.telefono,
+    correo: form.correo,
+    rol: form.rol,
+    estado: form.estado,
+    permisos: permisosFinal,
+    createdAt: new Date()
+  });
+
+  // Create authorization record
+  await setDoc(doc(db, "autorizados", uid), {
+    activo: form.estado === "Activo",
+    rol: form.rol,
+    permisos: permisosFinal
+  });
+
+  // Restore admin session
+  await auth.updateCurrentUser(adminActual);
+};
+```
+
+<Warning>
+  When creating a user, the current admin is temporarily signed out. The system automatically restores the admin session after user creation.
+</Warning>
+
+## Editing Employees
+
+### Edit Process
+
+```javascript
+const handleEdit = (emp) => {
+  const permisos = normalizarPermisos(emp.rol || "", emp.permisos || {});
+  
+  setForm({
+    nombre: emp.nombre || "",
+    telefono: emp.telefono || "",
+    correo: emp.correo || "",
+    rol: emp.rol || "",
+    estado: emp.estado || "Activo",
+    password: "", // Password not editable
+    permisos
+  });
+  
+  setEditingId(emp.id);
+  setShowForm(true);
+};
+```
+
+### Update Logic
+
+```javascript
+if (editingId) {
+  const empleadoEditado = empleados.find(e => e.id === editingId);
+  
+  // Update employee profile
+  await updateDoc(doc(db, "empleados", editingId), {
+    nombre: form.nombre,
+    telefono: form.telefono,
+    rol: form.rol,
+    estado: form.estado,
+    permisos: permisosFinal
+  });
+
+  // Update authorization
+  await updateDoc(doc(db, "autorizados", empleadoEditado.uid), {
+    rol: form.rol,
+    activo: form.estado === "Activo",
+    permisos: permisosFinal
+  });
+}
+```
+
+<Note>
+  Email addresses cannot be changed after account creation. To change an email, you must create a new account.
+</Note>
+
+## Permission Management
+
+### Permission Editor Modal
+
+Click "Checks de acceso" to open the permission customization interface:
+
+```jsx
+<div className="emp-permisos-grid">
+  {PERMISOS_CATALOGO.map(perm => (
+    <label key={perm.key} className="emp-perm-item">
+      <input
+        type="checkbox"
+        checked={!!permisosDraft?.[perm.key]}
+        onChange={() => togglePermisoDraft(perm.key)}
+      />
+      <div>
+        <strong>{perm.label}</strong>
+        <small>{perm.description}</small>
+      </div>
+    </label>
+  ))}
+</div>
+```
+
+### Role-Based Defaults
+
+Each role has default permissions:
+
+```javascript
+export function permisosBasePorRol(rol) {
+  const base = {};
+  PERMISOS_CATALOGO.forEach(p => {
+    base[p.key] = false;
+  });
+
+  const rolLower = String(rol || "").toLowerCase();
+
+  if (rolLower === "administrador") {
+    // All permissions
+    PERMISOS_CATALOGO.forEach(p => {
+      base[p.key] = true;
+    });
+  }
+
+  if (rolLower === "tecnico") {
+    base["servicios.crear"] = true;
+    base["servicios.modificar"] = true;
+    base["clientes.ver"] = true;
+    base["inventario.ver"] = true;
+  }
+
+  if (rolLower === "cajero") {
+    base["pos.vender"] = true;
+    base["clientes.ver"] = true;
+    base["clientes.modificar"] = true;
+    base["inventario.ver"] = true;
+    base["reportes.ver"] = true;
+    base["reportes.caja"] = true;
+  }
+
+  return base;
+}
+```
+
+### Permission Normalization
+
+When roles change, permissions are merged:
+
+```javascript
+export function normalizarPermisos(rol, permisosActuales = {}) {
+  const base = permisosBasePorRol(rol);
+  const merged = { ...base };
+
+  // Preserve custom permissions if they don't conflict with role
+  Object.keys(permisosActuales).forEach(key => {
+    if (permisosActuales[key] === true) {
+      merged[key] = true;
+    }
+  });
+
+  return merged;
+}
+```
+
+<Tip>
+  Use "Cargar base por rol" button in the permission modal to reset permissions to role defaults.
+</Tip>
+
+## Permission Checking
+
+Throughout the application, features check permissions:
+
+```javascript
+export function tienePermiso(rol, permisos, permissionKey) {
+  // Admins bypass all checks
+  if (String(rol || "").toLowerCase() === "administrador") {
+    return true;
+  }
+
+  // Check specific permission
+  return !!(permisos || {})[permissionKey];
+}
+
+// Usage example:
+const [puedeGestionarActual, setPuedeGestionarActual] = useState(false);
+
+useEffect(() => {
+  const obtenerRol = async () => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
+
+    const snap = await getDoc(doc(db, "autorizados", uid));
+    if (!snap.exists()) return;
+
+    const data = snap.data();
+    setPuedeGestionarActual(
+      tienePermiso(data.rol || "", data.permisos || {}, "empleados.gestionar")
+    );
+  };
+
+  obtenerRol();
+}, []);
+```
+
+### Conditional Rendering
+
+```jsx
+{puedeGestionarActual && (
+  <button className="emp-btn emp-btn-primary" onClick={handleNew}>
+    + Nuevo Empleado
+  </button>
+)}
+```
+
+## Active/Inactive Status
+
+### Status Toggle
+
+Employees can be activated or deactivated:
+
+```jsx
+<select
+  value={form.estado}
+  onChange={(e) => setForm({ ...form, estado: e.target.value })}
+>
+  <option>Activo</option>
+  <option>Inactivo</option>
+</select>
+```
+
+### Status Effects
+
+```javascript
+// Update authorization
+await updateDoc(doc(db, "autorizados", empleadoEditado.uid), {
+  activo: form.estado === "Activo",
+  // ...
+});
+
+// Backend validation (example)
+if (!autorizado.activo) {
+  throw new Error("Usuario inactivo. Contacta al administrador.");
+}
+```
+
+<Note>
+  Inactive users cannot log in but their records remain in the database for historical reporting.
+</Note>
+
+## Deleting Employees
+
+### Deletion Flow
+
+```javascript
+const handleDelete = async (emp) => {
+  if (!window.confirm("Eliminar empleado?")) return;
+
+  const currentUid = auth.currentUser?.uid;
+  if (emp.uid === currentUid) {
+    alert("No puedes eliminar tu propia cuenta.");
+    return;
+  }
+
+  await deleteDoc(doc(db, "empleados", emp.id));
+  await deleteDoc(doc(db, "autorizados", emp.uid));
+};
+```
+
+<Warning>
+  Deleting an employee removes their access immediately but does NOT delete their Firebase Authentication account. Consider using Inactive status instead.
+</Warning>
+
+## Employee List
+
+The main table displays all employees:
+
+```jsx
+<table>
+  <thead>
+    <tr>
+      <th>Nombre</th>
+      <th>Rol</th>
+      <th>Correo</th>
+      <th>Estado</th>
+      <th>Acciones</th>
+    </tr>
+  </thead>
+  <tbody>
+    {empleados.map(emp => (
+      <tr key={emp.id}>
+        <td>{emp.nombre}</td>
+        <td>{emp.rol}</td>
+        <td>{emp.correo}</td>
+        <td>
+          <span className={emp.estado === "Activo" ? "estado-activo" : "estado-inactivo"}>
+            {emp.estado}
+          </span>
+        </td>
+        <td className="emp-actions-cell">
+          {puedeGestionarActual && (
+            <div className="emp-actions-group">
+              <button onClick={() => handleEdit(emp)}>Editar</button>
+              <button onClick={() => handleDelete(emp)}>Eliminar</button>
+            </div>
+          )}
+        </td>
+      </tr>
+    ))}
+  </tbody>
+</table>
+```
+
+## Real-Time Updates
+
+Employee list uses Firestore snapshots for live updates:
+
+```javascript
+useEffect(() => {
+  const unsub = onSnapshot(
+    collection(db, "empleados"),
+    (snapshot) => {
+      const lista = snapshot.docs.map(row => ({ id: row.id, ...row.data() }));
+      setEmpleados(lista);
+    },
+    (error) => {
+      console.warn("No se pudo suscribir a empleados:", error?.code);
+      setEmpleados([]);
+    }
+  );
+
+  return () => unsub();
+}, []);
+```
+
+Changes to employee records are reflected immediately across all active sessions.
+
+## Phone Number Validation
+
+Phone input enforces 10-digit format:
+
+```jsx
+<input
+  type="tel"
+  placeholder="10 digitos"
+  value={form.telefono}
+  maxLength={10}
+  onChange={(e) => {
+    const soloNumeros = e.target.value.replace(/\D/g, "").slice(0, 10);
+    setForm({ ...form, telefono: soloNumeros });
+  }}
+/>
+```
+
+## Security Best Practices
+
+<AccordionGroup>
+  <Accordion title="Password Requirements">
+    Firebase Auth enforces minimum 6 characters. Consider requiring:
+    - At least 8 characters
+    - Mix of uppercase and lowercase
+    - At least one number
+    - At least one special character
+  </Accordion>
+  
+  <Accordion title="Permission Auditing">
+    Track permission changes:
+    - Log who modified permissions
+    - Record when changes occurred
+    - Store previous permission state
+    - Review audit logs regularly
+  </Accordion>
+  
+  <Accordion title="Least Privilege Principle">
+    - Grant minimum permissions needed for job role
+    - Regularly review and revoke unnecessary permissions
+    - Use temporary elevated access for one-time tasks
+    - Separate duties between roles
+  </Accordion>
+  
+  <Accordion title="Account Deactivation Process">
+    When employee leaves:
+    1. Immediately set status to "Inactivo"
+    2. Document reason for departure
+    3. Revoke all permissions
+    4. Review their recent activities
+    5. Change shared passwords they knew
+  </Accordion>
+</AccordionGroup>
+
+## Integration with Other Modules
+
+### Service Management
+- Technicians see "created by" field
+- Permission check before service modification
+- Role-based service list filtering
+
+### POS System
+- Cashiers have full POS access
+- Technicians cannot access POS
+- Sales attributed to logged-in user
+
+### Reports
+- Permission required to view reports
+- Cash register closing restricted to authorized roles
+- Sensitive financial data protected
+
+## Technical Implementation
+
+The employee management system uses:
+
+```javascript
+import { 
+  addDoc, collection, deleteDoc, doc, getDoc, 
+  onSnapshot, setDoc, updateDoc 
+} from "firebase/firestore";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { auth, db } from "../initializer/firebase";
+import { 
+  PERMISOS_CATALOGO, normalizarPermisos, 
+  permisosBasePorRol, tienePermiso 
+} from "../js/services/permisos";
+```
+
+**Key Files:**
+- `src/pages/empleados.jsx` - Main interface (460 lines)
+- `src/js/services/permisos.js` - Permission system
+- `src/css/empleados.css` - Employee UI styling
+
+**Firebase Collections:**
+- `empleados` - Employee profiles
+- `autorizados` - Permission records (keyed by UID)
+
+**Security Rules Example:**
+```javascript
+match /empleados/{empleadoId} {
+  allow read: if request.auth != null;
+  allow write: if tienePermisoAdmin(request.auth.uid);
+}
+
+match /autorizados/{uid} {
+  allow read: if request.auth != null && request.auth.uid == uid;
+  allow write: if tienePermisoAdmin(request.auth.uid);
+}
+```

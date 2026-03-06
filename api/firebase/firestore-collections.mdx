@@ -1,0 +1,298 @@
+---
+title: 'Firestore Collections'
+description: 'Documentation of all Firestore collections used in Luis IT Repair'
+---
+
+## Overview
+
+This page documents all Firestore collections used in the Luis IT Repair application, including their structure, purpose, and usage patterns.
+
+## Collections
+
+### autorizados
+
+**Purpose**: Stores authorized users who can access the system.
+
+**Access**: Authenticated users only (read/write)
+
+**Fields**:
+- User authorization data
+- Access permissions
+
+**Usage**: Controls which users have access to the application and defines their permission levels.
+
+---
+
+### servicios
+
+**Purpose**: Manages repair service orders and their lifecycle.
+
+**Access**: 
+- Read: Public (allows customers to check repair status)
+- Write: Authenticated users only
+
+**Key Fields**:
+- `folio`: Unique service identifier (e.g., "IP-001")
+- `clienteId`: Reference to client in `clientes` collection
+- `nombre`, `telefono`, `direccion`: Customer contact information
+- `tipoDispositivo`: Device type (phone, laptop, etc.)
+- `marca`, `modelo`: Device brand and model
+- `numeroSerie`: Device serial number
+- `omitirNumeroSerie`: Boolean flag to skip serial number
+- `trabajo`: Description of work to be performed
+- `precioDespues`: Boolean indicating if price is determined after diagnosis
+- `status`: Current service status (e.g., "en_proceso", "entregado", "cancelado")
+- `createdAt`, `updatedAt`: Timestamps
+
+**Usage**: Central collection for tracking repair orders from creation to delivery.
+
+```javascript
+// Example: Creating a service order
+import { construirPayload } from './services/servicios_firestore';
+
+const serviceData = {
+  clienteId: 'client123',
+  nombre: 'Juan Pérez',
+  telefono: '5551234567',
+  tipoDispositivo: 'celular',
+  marca: 'iPhone',
+  modelo: '13 Pro',
+  trabajo: 'Cambio de pantalla',
+  precioDespues: false
+};
+```
+
+<Note>
+The `servicios` collection has public read access to allow customers to check their repair status without authentication.
+</Note>
+
+---
+
+### clientes
+
+**Purpose**: Customer database with contact information and preferences.
+
+**Access**: Authenticated users only (read/write)
+
+**Key Fields**:
+- `nombre`: Customer full name
+- `nombreNorm`: Normalized name for searching (lowercase, no accents)
+- `nombreCompact`: Compact name without spaces
+- `telefono`: Phone number
+- `direccion`: Address
+- `numeroSeriePreferido`: Preferred serial number format
+- `omitirNumeroSerie`: Boolean to skip serial number requirement
+- `puntos`: Loyalty points balance
+- `createdAt`, `updatedAt`: Timestamps
+
+**Usage**: Stores customer information for quick lookup during service creation. Includes loyalty points system.
+
+```javascript
+// Example: Customer lookup by phone
+import { buscarClientePorTelefono } from './services/POS_firebase';
+
+const cliente = await buscarClientePorTelefono('5551234567');
+```
+
+---
+
+### productos
+
+**Purpose**: Inventory management for products and parts sold.
+
+**Access**: Authenticated users only (read/write)
+
+**Key Fields**:
+- `id`: Product ID (stored within document)
+- `nombre`: Product name
+- `precio`: Sale price
+- `stock`: Current inventory quantity
+- `codigo`: Product code/SKU
+- Product metadata
+
+**Usage**: Manages inventory for the POS system, including stock tracking and pricing.
+
+```javascript
+// Example: Get all products
+import { obtenerProductos } from './services/POS_firebase';
+
+const productos = await obtenerProductos();
+```
+
+---
+
+### ventas
+
+**Purpose**: Sales transaction records from the POS system.
+
+**Access**: Authenticated users only (read/write)
+
+**Key Fields**:
+- `productos`: Array of sold items with quantities
+- `subtotal`: Subtotal amount
+- `iva`: Tax amount
+- `total`: Total sale amount
+- `tipoPago`: Payment method ("efectivo", "tarjeta", "transferencia")
+- `pagoDetalle`: Breakdown for mixed payments
+  - `efectivo`: Cash amount
+  - `tarjeta`: Card amount
+  - `transferencia`: Transfer amount
+- `fechaKey`: Date in YYYY-MM-DD format for daily aggregation
+- `timestamp`: Sale timestamp
+- `clienteId`: Optional customer reference
+
+**Usage**: Records all sales transactions for reporting and cash register reconciliation.
+
+```javascript
+// Example: Register a sale
+import { registrarVenta } from './services/POS_firebase';
+
+const ventaData = {
+  productos: [{id: 'prod1', cantidad: 2, precio: 100}],
+  subtotal: 200,
+  iva: 32,
+  total: 232,
+  tipoPago: 'efectivo',
+  fechaKey: '2026-03-06',
+  timestamp: new Date()
+};
+
+const ventaId = await registrarVenta(ventaData);
+```
+
+---
+
+### cortes_caja
+
+**Purpose**: Daily cash register closing records.
+
+**Access**: Authenticated users only (read/write)
+
+**Key Fields**:
+- `fechaKey`: Date key (YYYY-MM-DD)
+- `subtotal`, `iva`, `total`: Daily totals
+- `efectivo`, `tarjeta`, `transferencia`, `otros`: Payment method breakdown
+- `tickets`: Number of transactions
+- `unidades`: Total items sold
+- `timestamp`: Closing timestamp
+- `empleadoId`: Employee who performed the closing
+
+**Usage**: Tracks daily sales summaries and cash register reconciliation.
+
+```javascript
+// Example: Calculate daily summary
+import { calcularResumenVentasDia } from './services/corte_caja_firestore';
+
+const ventasDia = await obtenerVentasDia('2026-03-06');
+const resumen = calcularResumenVentasDia(ventasDia);
+```
+
+---
+
+### folios
+
+**Purpose**: Lookup index for service order folios (unique identifiers).
+
+**Access**: Authenticated users only (read/write)
+
+**Key Fields**:
+- Document ID: Folio key (e.g., "IP-001" stored as "IP-001")
+- `servicioId`: Reference to document in `servicios` collection
+- Metadata for quick folio lookup
+
+**Usage**: Provides fast folio-based lookups without scanning the entire `servicios` collection.
+
+<Warning>
+Firestore does not allow forward slashes (/) in document IDs. Folios are stored with dashes instead.
+</Warning>
+
+---
+
+### contadores_folio
+
+**Purpose**: Maintains counters for generating sequential folio numbers.
+
+**Access**: Authenticated users only (read/write)
+
+**Key Fields**:
+- Document ID: Brand or category identifier
+- `contador`: Current counter value
+- Metadata for folio generation
+
+**Usage**: Generates unique sequential folios per brand (e.g., IP-001, IP-002 for iPhone).
+
+```javascript
+// Example: Generate folio
+import { generarFolio } from './utils_folio';
+
+const folio = await generarFolio('iPhone'); // Returns: "IP-001"
+```
+
+---
+
+### egresos_diarios
+
+**Purpose**: Daily expense tracking.
+
+**Access**: Authenticated users only (read/write)
+
+**Key Fields**:
+- `monto`: Expense amount
+- `concepto`: Expense description/category
+- `fechaKey`: Date key (YYYY-MM-DD)
+- `timestamp`: Expense timestamp
+- `empleadoId`: Employee who recorded the expense
+
+**Usage**: Tracks business expenses for financial reporting and cash flow analysis.
+
+---
+
+### empleados
+
+**Purpose**: Employee information and profiles.
+
+**Access**: Authenticated users only (read/write)
+
+**Key Fields**:
+- Employee personal information
+- Role and permissions
+- Activity tracking data
+
+**Usage**: Manages employee records and tracks who performs various operations in the system.
+
+---
+
+### pos_mobile_scans
+
+**Purpose**: Synchronization queue for mobile POS barcode scans.
+
+**Access**: Authenticated users only (read/write)
+
+**Key Fields**:
+- Scanned product data
+- User ID
+- Timestamp
+- Sync status
+
+**Usage**: Enables mobile devices to scan products and sync with desktop POS systems for the same user.
+
+<Note>
+This collection facilitates real-time synchronization between mobile barcode scanners and the desktop POS application.
+</Note>
+
+## Data Flow Example
+
+Here's how the collections work together in a typical repair service workflow:
+
+1. **Customer Check**: Search `clientes` by phone number
+2. **Create Service**: Generate folio using `contadores_folio`, create document in `servicios`, add entry to `folios` index
+3. **Parts Sale**: Update `productos` inventory, create `ventas` record
+4. **Daily Close**: Query `ventas` by `fechaKey`, calculate totals, store in `cortes_caja`
+5. **Status Tracking**: Public users query `servicios` by folio to check repair status
+
+## Security Considerations
+
+- Most collections require authentication for both read and write operations
+- The `servicios` collection allows public reads to enable customer status lookups
+- All write operations require valid authentication tokens
+- Security rules are defined in `firestore.rules`

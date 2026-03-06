@@ -1,0 +1,385 @@
+---
+title: Processing Sales
+description: Complete guide to using the POS system for selling products and collecting payment for completed services
+---
+
+## Overview
+
+The Point of Sale (POS) system handles product sales, service payments, and cash register operations. It supports multiple payment methods, inventory management, customer loyalty points, and mobile scanner integration.
+
+## Prerequisites
+
+- Permission: `ventas.pos` (Use POS)
+- Cash register must be opened with initial balance (Fondo Inicial)
+- Active user account
+
+## Opening the Cash Register
+
+<Steps>
+
+### Initial Cash Balance Required
+
+Before processing any sales, you must register the opening cash balance (Fondo Inicial).
+
+```javascript
+// Cash register opening payload
+await registrarAperturaCaja(fondoInicialCaja, {
+  uid: auth.currentUser?.uid,
+  email: auth.currentUser?.email,
+  nombre: auth.currentUser?.displayName
+});
+```
+
+### Enter Opening Balance
+
+1. On POS access, a modal appears if no opening balance is registered
+2. Enter the cash amount in the register at start of day
+3. Click confirm to enable sales
+
+<Note>
+The POS is completely blocked until the opening balance is registered. This ensures accurate end-of-day reconciliation.
+</Note>
+
+</Steps>
+
+## Processing Product Sales
+
+<Steps>
+
+### Add Products to Cart
+
+There are three ways to add products:
+
+**1. Barcode Scanner (Desktop)**
+- Scan product barcode in the search field
+- Product auto-adds to cart after 120ms
+- Works with USB barcode scanners
+
+**2. Code Search**
+- Type product code in search field
+- Press Enter
+- Exact code match adds product immediately
+
+**3. Name Search**
+- Type partial product name
+- If multiple matches, a selector modal appears
+- Click the correct product to add
+
+```javascript
+// Search priority:
+// 1. Exact code match → auto-add
+// 2. Service folio match → add service to cart
+// 3. Name search → show selector if multiple matches
+```
+
+### Mobile Scanner Integration
+
+On mobile devices (less than 1024px width or touch pointer):
+
+- Dedicated mobile scanner interface appears
+- Scans are synced to desktop POS via Firestore
+- Desktop POS processes scans and updates cart in real-time
+
+```javascript
+// Mobile scan sync
+await enviarScanPosMovil({
+  uid,
+  termino: scannedCode,
+  actorUid: uid,
+  actorEmail: auth.currentUser?.email
+});
+```
+
+### Add Completed Services
+
+Click **"Pagar servicio"** to:
+
+1. Load services in "Listo" (Ready) status
+2. Select the service from the modal
+3. Service adds to cart as a line item
+4. Client info auto-populates from service record
+
+<Warning>
+Only services in "Listo" status with a valid cost can be added to cart. Services already marked as "entregado" or "cobradoEnPOS" are filtered out.
+</Warning>
+
+### Adjust Quantities
+
+Products automatically increment quantity when scanned multiple times:
+
+```javascript
+if (existe) {
+  if (existe.cantidad >= producto.stock) {
+    alert("No hay más stock disponible");
+    return;
+  }
+  setCarrito(carrito.map(p =>
+    p.id === producto.id
+      ? { ...p, cantidad: p.cantidad + 1 }
+      : p
+  ));
+}
+```
+
+<Note>
+Stock limits are enforced in real-time. You cannot add more units than available in inventory.
+</Note>
+
+</Steps>
+
+## Customer Lookup
+
+<Steps>
+
+### Enter Phone Number
+
+1. Type customer's 10-digit phone in the "Cliente (Opcional)" field
+2. Tab out or click elsewhere to trigger lookup
+3. Customer name and points display if found
+
+### Benefits of Customer Linking
+
+- View current loyalty points
+- Apply points as discount
+- Earn new points on purchase (1 point per $10)
+- Auto-populate from service if paying for completed work
+
+```javascript
+const puntosGenerados = Math.floor(total / 10);
+```
+
+</Steps>
+
+## Payment Processing
+
+<Steps>
+
+### Review Cart
+
+Verify all items, quantities, and prices before proceeding.
+
+- **Subtotal**: Sum of all line items
+- **IVA**: 16% tax (configurable in localStorage with `pos_aplicar_iva`)
+- **Total**: Final amount due
+
+### Click "Realizar Venta"
+
+Opens the professional payment modal.
+
+### Configure Discounts (Optional)
+
+**Manual Discount**:
+- Enter discount amount in currency
+- Reduces subtotal before tax calculation
+
+**Loyalty Points**:
+- Check "Usar Puntos"
+- Points apply as 1:1 discount (1 point = $1)
+- Cannot exceed subtotal amount
+
+```javascript
+const descuentoPuntos = usarPuntos && clienteData
+  ? Math.min(clienteData.puntos || 0, subtotal)
+  : 0;
+
+const subtotalConDescuento = subtotal - descuentoManual - descuentoPuntos;
+```
+
+### Select Payment Method
+
+**Efectivo (Cash)**:
+- Enter amount received
+- System calculates change
+- Must meet or exceed total
+
+**Tarjeta (Card)**:
+- Enter card amount
+- Provide reference number (required)
+
+**Transferencia (Transfer)**:
+- Enter transfer amount
+- Reference optional
+
+**Mixed Payment**:
+- Supports split between cash, card, and transfer
+- Total of all methods must equal or exceed sale total
+
+```javascript
+const totalPagado = 
+  Number(montoEfectivo) + 
+  Number(montoTarjeta) + 
+  Number(montoTransferencia);
+
+const cambio = totalPagado - total;
+```
+
+### Confirm Sale
+
+Click **"Confirmar Venta"** to:
+
+1. Validate payment sufficiency
+2. Check inventory availability (including service boleta items)
+3. Register sale in `ventas` collection
+4. Deduct stock from products
+5. Update customer points (deduct used, add earned)
+6. Mark services as "entregado" and "cobradoEnPOS"
+7. Print sales receipt
+
+</Steps>
+
+## Inventory Management
+
+The POS enforces strict inventory control:
+
+### Stock Validation
+
+```javascript
+// Consolidates all product requirements
+const requeridosPorProducto = new Map();
+
+// From cart items
+carrito.forEach((item) => {
+  if (!item.esServicio) {
+    requeridosPorProducto.set(item.id, cantidad);
+  }
+});
+
+// From service boletas (parts used)
+consumoBoletaServicios.forEach(({ producto, cantidad }) => {
+  const prev = requeridosPorProducto.get(productoId) || 0;
+  requeridosPorProducto.set(productoId, prev + cantidad);
+});
+
+// Validate against current stock
+if (requerido > stockActual) {
+  alert("No hay stock suficiente");
+  return;
+}
+```
+
+### Stock Deduction
+
+After successful sale:
+
+```javascript
+await descontarStock(productoId, nuevoStock);
+
+// Service boleta items flagged
+await actualizarServicioPorId(servicio.id, {
+  boletaStockAjustado: true,
+  boletaStockAjustadoAt: new Date()
+});
+```
+
+<Warning>
+If a service's boleta (parts list) contains products, those quantities are reserved and deducted when the service is sold, preventing double-deduction.
+</Warning>
+
+## Receipt Printing
+
+Automatically prints thermal receipt with:
+
+- Sale ID and date/time
+- Cashier/employee name
+- Customer name and phone
+- Itemized products with quantities and prices
+- Service items marked as "Entregado"
+- Payment method and reference
+- Subtotal, IVA, and total
+- Change given (if cash)
+- Loyalty points earned
+
+See: `src/components/print_ticket_venta.jsx`
+
+## Cash Register Closure
+
+<Note>
+Once the cash register is closed for the day, no more sales can be processed until the next day's opening balance is registered.
+</Note>
+
+The system displays:
+```
+Caja cerrada hoy. No se pueden registrar ventas hasta mañana.
+Cierre: [timestamp]
+```
+
+See: [Cash Register Operations](/guides/cash-register-operations) for closing procedures.
+
+## Price Comparison
+
+Click **"Comparar"** on any cart item to:
+
+- View marketplace prices (Amazon, MercadoLibre, etc.)
+- Compare with your current price
+- Make informed pricing decisions
+
+See: `src/components/modal_comparador_precios.jsx`
+
+## Blocked States
+
+POS is completely disabled when:
+
+1. **No opening balance registered**
+   - Modal appears to capture fondo inicial
+   - All cart and search actions blocked
+
+2. **Cash register closed**
+   - Sales blocked until next day
+   - Cart cleared automatically
+   - Closing timestamp displayed
+
+```javascript
+if (cajaCerradaHoy || faltaFondoInicial) {
+  // Block all POS operations
+  return;
+}
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Link Customers" icon="user">
+    Always enter customer phone for loyalty tracking and service history.
+  </Card>
+  
+  <Card title="Verify Stock" icon="boxes-stacked">
+    Check product availability before promising items to customers.
+  </Card>
+  
+  <Card title="Complete Services First" icon="wrench">
+    Ensure services are marked "Listo" before attempting to charge in POS.
+  </Card>
+  
+  <Card title="Count Change Carefully" icon="money-bill">
+    System calculates change automatically, but always verify cash transactions.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+**"Caja cerrada" message on POS access?**
+- Previous day's register was closed
+- Register new opening balance for current day
+- Contact administrator if needed
+
+**"Stock insuficiente" error?**
+- Verify product inventory levels
+- Check if service boleta consumes the same product
+- Update stock in Products module if incorrect
+
+**Service not appearing in "Pagar servicio"?**
+- Confirm service status is exactly "Listo"
+- Verify service has a valid cost amount
+- Check that service hasn't been marked as paid already
+
+**Mobile scanner not syncing?**
+- Ensure both devices are logged in with same user
+- Check internet connectivity
+- Verify desktop POS is open and active
+
+## Related Workflows
+
+- [Creating Service Tickets](/guides/creating-service-tickets) - Register new repair services
+- [Tracking Inventory](/guides/tracking-inventory) - Managing product stock
+- [Cash Register Operations](/guides/cash-register-operations) - Opening and closing procedures
+- [Managing Clients](/guides/managing-clients) - Customer records and loyalty points

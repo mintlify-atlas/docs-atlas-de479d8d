@@ -1,0 +1,366 @@
+---
+title: Managing Clients
+description: Guide to creating, viewing, and managing customer records in Luis IT Repair
+---
+
+## Overview
+
+The client management system maintains customer records, tracks service history, manages loyalty points, and enables quick client lookup during service creation and sales.
+
+## Prerequisites
+
+- Permission: `clientes.ver` (View Clients)
+- Active user account
+
+## Viewing Clients
+
+<Steps>
+
+### Access Client List
+
+Navigate to `/clientes` to view the client directory.
+
+### Search Clients
+
+Use the search bar to filter by:
+- Name (partial match, case-insensitive)
+- Phone number (partial match)
+
+```javascript
+const filtrados = items.filter((c) => {
+  return (
+    (c.nombre || "").toLowerCase().includes(searchTerm) ||
+    (c.telefono || "").toString().includes(searchTerm)
+  );
+});
+```
+
+### View Client Details
+
+Click any client card to navigate to `/clientes/{id}` for detailed view.
+
+</Steps>
+
+## Client Data Structure
+
+```javascript
+{
+  id: "auto-generated-firestore-id",
+  nombre: "Juan Pérez",
+  telefono: "5551234567",
+  direccion: "Calle Principal 123, Col. Centro",
+  numeroSeriePreferido: "SN123456",     // Last used serial
+  omitirNumeroSerie: false,              // Prefers to skip serial
+  puntos: 150,                           // Loyalty points balance
+  createdAt: Timestamp,
+  updatedAt: Timestamp
+}
+```
+
+See: `src/js/services/clientes_firestore.js`
+
+## Creating Clients
+
+Clients are typically created automatically through two workflows:
+
+### 1. During Service Creation
+
+<Steps>
+
+**New Client Flow:**
+
+1. User types new name in Hoja de Servicio form
+2. Name doesn't match existing clients (or user skips suggestions)
+3. User completes service form with client details
+4. On submit, new client record is created
+
+```javascript
+const nuevo = await crearCliente({
+  nombre: form.nombre,
+  telefono: form.telefono,
+  direccion: form.direccion,
+  numeroSeriePreferido: form.omitirNumeroSerie ? "" : form.numeroSerie,
+  omitirNumeroSerie: !!form.omitirNumeroSerie,
+});
+
+clienteIdFinal = nuevo.id;
+```
+
+**Existing Client Flow:**
+
+1. User types name (minimum 3 characters)
+2. Fuzzy search returns similar clients
+3. User selects from dropdown
+4. Client details auto-populate
+5. On submit, client record is updated with latest info
+
+```javascript
+await actualizarCliente(selectedCliente.id, {
+  nombre: form.nombre,
+  telefono: form.telefono,
+  direccion: form.direccion,
+  numeroSeriePreferido: form.omitirNumeroSerie ? "" : form.numeroSerie,
+  omitirNumeroSerie: !!form.omitirNumeroSerie,
+});
+```
+
+</Steps>
+
+### 2. During POS Sales
+
+When entering customer phone number in POS:
+
+```javascript
+const cliente = await buscarClientePorTelefono(clienteTelefono);
+
+if (cliente) {
+  // Existing client found
+  setClienteData(cliente);
+} else {
+  // Client can be created after sale if needed
+  // Or left as "Publico general"
+}
+```
+
+## Client Search & Matching
+
+### Fuzzy Name Search
+
+The system uses Levenshtein distance for smart matching:
+
+```javascript
+export async function buscarClientesSimilares(nombre, options = {}) {
+  const { maxFetch = 50, maxReturn = 8 } = options;
+  
+  // Fetch recent clients
+  const q = query(
+    collection(db, "clientes"),
+    orderBy("createdAt", "desc"),
+    limit(maxFetch)
+  );
+  
+  const snapshot = await getDocs(q);
+  const clientes = snapshot.docs.map(doc => ({ 
+    id: doc.id, 
+    ...doc.data() 
+  }));
+  
+  // Score by similarity
+  const scored = clientes.map(c => ({
+    ...c,
+    score: levenshtein(normalize(nombre), normalize(c.nombre))
+  }));
+  
+  // Return top matches
+  return scored
+    .sort((a, b) => a.score - b.score)
+    .slice(0, maxReturn);
+}
+```
+
+**Search Behavior:**
+- Triggered after 300ms debounce
+- Minimum 3 characters required
+- Fetches up to 50 recent clients
+- Returns top 8 matches by similarity score
+- Normalizes text (removes accents, lowercase)
+
+See: `src/pages/Hoja_service.jsx:164-201`
+
+### Phone Number Lookup
+
+```javascript
+export async function buscarClientePorTelefono(telefono) {
+  const q = query(
+    collection(db, "clientes"),
+    where("telefono", "==", telefono),
+    limit(1)
+  );
+  
+  const snapshot = await getDocs(q);
+  if (snapshot.empty) return null;
+  
+  const doc = snapshot.docs[0];
+  return { id: doc.id, ...doc.data() };
+}
+```
+
+<Note>
+Phone lookup is exact match only. Ensure consistent formatting (10 digits, no spaces or dashes).
+</Note>
+
+## Client Details Page
+
+The detail view (`/clientes/{id}`) displays:
+
+- **Contact Information**: Name, phone, address
+- **Service History**: All services linked to this client
+- **Loyalty Points**: Current balance and transaction history
+- **Quick Actions**: Create new service for this client
+
+### Prefilling Service Form
+
+From client detail, click "Nuevo Servicio" to:
+
+```javascript
+navigate("/hoja-servicio", {
+  state: {
+    prefillCliente: {
+      id: cliente.id,
+      nombre: cliente.nombre,
+      telefono: cliente.telefono,
+      direccion: cliente.direccion,
+      numeroSeriePreferido: cliente.numeroSeriePreferido,
+      omitirNumeroSerie: cliente.omitirNumeroSerie
+    }
+  }
+});
+```
+
+The service form auto-populates all client fields and sets client as selected.
+
+See: `src/pages/Hoja_service.jsx:115-141`
+
+## Loyalty Points System
+
+### Earning Points
+
+Customers earn points on every POS sale:
+
+```javascript
+const puntosGenerados = Math.floor(total / 10);
+// 1 point per $10 spent
+
+await sumarPuntosCliente(clienteData.id, puntosGenerados);
+```
+
+### Redeeming Points
+
+During POS checkout:
+
+1. Customer is linked by phone
+2. Cashier checks "Usar Puntos"
+3. Points apply as 1:1 discount (1 point = $1)
+4. Cannot exceed subtotal amount
+
+```javascript
+const descuentoPuntos = usarPuntos && clienteData
+  ? Math.min(clienteData.puntos || 0, subtotal)
+  : 0;
+
+// Deduct used points
+await sumarPuntosCliente(clienteData.id, -descuentoPuntos);
+
+// Add newly earned points
+await sumarPuntosCliente(clienteData.id, puntosGenerados);
+```
+
+<Warning>
+Points are deducted BEFORE new points are added in the same transaction. Net change = -used + earned.
+</Warning>
+
+## Serial Number Preferences
+
+Clients can have saved serial number preferences:
+
+- **numeroSeriePreferido**: Last serial number used for services
+- **omitirNumeroSerie**: Boolean flag if client prefers to skip serial entry
+
+These auto-populate when creating new services for returning customers.
+
+## Service History Linking
+
+### Querying Client Services
+
+```javascript
+export async function listarServiciosPorClienteId(clienteId) {
+  if (!clienteId) return [];
+  
+  const q = query(
+    collection(db, "servicios"),
+    where("clienteId", "==", clienteId),
+    orderBy("createdAt", "desc")
+  );
+  
+  const snapshot = await getDocs(q);
+  
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
+}
+```
+
+### Service-to-Client Relationship
+
+Every service stores a `clienteId` reference:
+
+```javascript
+const servicePayload = {
+  clienteId: clientIdFinal,  // FK to clientes collection
+  nombre: form.nombre,       // Denormalized for quick display
+  telefono: form.telefono,   // Used for fallback lookup
+  // ... device and service details
+};
+```
+
+This enables:
+- Client detail page to show all their services
+- Service pages to link back to client
+- Reporting by customer
+- Revenue tracking per client
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Always Search First" icon="magnifying-glass">
+    Use the fuzzy search before creating services to find existing clients and avoid duplicates.
+  </Card>
+  
+  <Card title="Keep Phone Numbers Clean" icon="phone">
+    Store phone numbers as 10 digits without formatting for consistent lookup.
+  </Card>
+  
+  <Card title="Update Contact Info" icon="address-card">
+    Client records update automatically when creating services, keeping data current.
+  </Card>
+  
+  <Card title="Promote Loyalty Points" icon="star">
+    Inform customers about points during checkout to encourage return visits.
+  </Card>
+</CardGroup>
+
+## Data Privacy
+
+<Note>
+Client records contain personal information (name, phone, address). Ensure your team follows appropriate data protection practices and only accesses client data when necessary for business operations.
+</Note>
+
+## Troubleshooting
+
+**Client not appearing in search?**
+- Verify they exist in the database
+- Try searching by phone number instead of name
+- Check for typos or alternative spellings
+- Search is limited to 50 most recent clients
+
+**Duplicate clients created?**
+- This happens when technicians don't use the search/suggestion feature
+- Manually merge by updating all services to reference the correct `clienteId`
+- Consider adding a duplicate detection report
+
+**Points balance incorrect?**
+- Check sales history for the client
+- Verify points were properly applied/deducted in each transaction
+- Points are cumulative: +earned on sales, -redeemed when used
+
+**Service history not showing?**
+- Confirm service has correct `clienteId` field
+- Old services might only have phone/name without clienteId
+- Consider data migration script to link legacy services
+
+## Related Workflows
+
+- [Creating Service Tickets](/guides/creating-service-tickets) - Client creation during service intake
+- [Processing Sales](/guides/processing-sales) - Loyalty points in POS
+- [Permissions & Roles](/guides/permissions-roles) - Understanding the `clientes.ver` permission

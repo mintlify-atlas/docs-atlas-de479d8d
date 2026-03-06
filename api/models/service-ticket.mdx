@@ -1,0 +1,280 @@
+---
+title: 'Service Ticket'
+description: 'Service ticket data model for device repair tracking'
+icon: 'wrench'
+---
+
+## Overview
+
+The Service Ticket model represents a repair service request in the Luis IT Repair system. It tracks devices from intake through completion, supporting laptops, PCs, printers, and monitors with device-specific fields.
+
+## Firestore Collection
+
+**Collection Name:** `servicios`
+
+**Index Collection:** `folios` (for unique folio lookups)
+
+## Core Fields
+
+<ResponseField name="folio" type="string" required>
+  Unique identifier for the service ticket (e.g., "HP/001"). Generated automatically based on device brand. Stored in the `folios` collection for fast lookups.
+</ResponseField>
+
+<ResponseField name="clienteId" type="string">
+  Reference to the client document ID in the `clientes` collection. Used to link services to customer records.
+</ResponseField>
+
+<ResponseField name="nombre" type="string" required>
+  Customer name for this service ticket.
+</ResponseField>
+
+<ResponseField name="telefono" type="string" required>
+  Customer phone number. Used for duplicate detection and customer lookup.
+</ResponseField>
+
+<ResponseField name="direccion" type="string">
+  Customer address for service delivery or contact purposes.
+</ResponseField>
+
+## Device Information
+
+<ResponseField name="tipoDispositivo" type="string" required>
+  Type of device being serviced. Determines which device-specific fields are populated.
+  
+  **Possible values:**
+  - `laptop`
+  - `pc`
+  - `impresora` (printer)
+  - `monitor`
+</ResponseField>
+
+<ResponseField name="marca" type="string" required>
+  Device brand/manufacturer (e.g., "HP", "Dell", "Lenovo"). Used in folio generation.
+</ResponseField>
+
+<ResponseField name="modelo" type="string" required>
+  Device model name or number.
+</ResponseField>
+
+<ResponseField name="numeroSerie" type="string">
+  Device serial number. Can be omitted if `omitirNumeroSerie` is true.
+</ResponseField>
+
+<ResponseField name="omitirNumeroSerie" type="boolean" default={false}>
+  Flag indicating whether serial number was intentionally omitted.
+</ResponseField>
+
+## Service Details
+
+<ResponseField name="trabajo" type="string" required>
+  Description of the work to be performed or issue to be diagnosed.
+</ResponseField>
+
+<ResponseField name="trabajoNorm" type="string">
+  Normalized version of `trabajo` for duplicate detection (lowercase, no accents).
+</ResponseField>
+
+<ResponseField name="costo" type="string">
+  Service cost. Empty if `precioDespues` is true.
+</ResponseField>
+
+<ResponseField name="precioDespues" type="boolean" default={false}>
+  Indicates if pricing will be determined after diagnosis.
+</ResponseField>
+
+<ResponseField name="caracteristicasPendientes" type="boolean" default={false}>
+  Flag indicating that device characteristics need to be filled in later.
+</ResponseField>
+
+## Status Tracking
+
+<ResponseField name="status" type="string" default="pendiente">
+  Current service status. Normalized to lowercase with underscores.
+  
+  **Common values:**
+  - `pendiente` - Initial state
+  - `en_proceso` - Work in progress
+  - `esperando_refacciones` - Waiting for parts
+  - `listo` - Ready for pickup
+  - `entregado` - Delivered (final state)
+  - `cancelado` - Cancelled (final state)
+  - `no_reparable` - Cannot be repaired (final state)
+</ResponseField>
+
+<ResponseField name="entregado" type="boolean" default={false}>
+  Deprecated field. Use `status === "entregado"` instead.
+</ResponseField>
+
+<ResponseField name="fechaEntregado" type="timestamp">
+  Timestamp when service was marked as delivered. Set automatically when `status` changes to "entregado".
+</ResponseField>
+
+<ResponseField name="locked" type="boolean">
+  Set to true when service reaches a final state (entregado, cancelado, no_reparable).
+</ResponseField>
+
+<ResponseField name="lockedReason" type="string">
+  The final status that caused the service to be locked.
+</ResponseField>
+
+## POS Integration
+
+<ResponseField name="cobradoEnPOS" type="boolean">
+  Indicates if this service was paid through the POS system.
+</ResponseField>
+
+<ResponseField name="fechaCobro" type="timestamp">
+  Timestamp when payment was processed in POS.
+</ResponseField>
+
+<ResponseField name="boletaStockAjustado" type="boolean">
+  Flag indicating that inventory has been adjusted for parts used in this service (boleta items).
+</ResponseField>
+
+<ResponseField name="boletaStockAjustadoAt" type="timestamp">
+  Timestamp when inventory adjustment was made.
+</ResponseField>
+
+## Device-Specific Fields
+
+### Laptop/PC (`tipoDispositivo: "laptop"` or `"pc"`)
+
+<Expandable title="laptopPc" defaultOpen>
+  <ResponseField name="procesador" type="string">
+    CPU/processor model
+  </ResponseField>
+  
+  <ResponseField name="ram" type="string">
+    RAM capacity (e.g., "8 GB")
+  </ResponseField>
+  
+  <ResponseField name="disco" type="string">
+    Storage capacity (e.g., "256 GB")
+  </ResponseField>
+  
+  <ResponseField name="estadoPantalla" type="string">
+    Screen condition
+  </ResponseField>
+  
+  <ResponseField name="estadoTeclado" type="string">
+    Keyboard condition
+  </ResponseField>
+  
+  <ResponseField name="estadoMouse" type="string">
+    Mouse/trackpad condition
+  </ResponseField>
+  
+  <ResponseField name="funciona" type="string">
+    General functionality notes
+  </ResponseField>
+  
+  <ResponseField name="enciendeEquipo" type="string">
+    Power-on behavior
+  </ResponseField>
+  
+  <ResponseField name="contrasenaEquipo" type="string">
+    Device password (if provided)
+  </ResponseField>
+</Expandable>
+
+### Printer (`tipoDispositivo: "impresora"`)
+
+<Expandable title="impresora">
+  <ResponseField name="tipoImpresora" type="string">
+    Printer type (e.g., "laser", "inkjet")
+  </ResponseField>
+  
+  <ResponseField name="imprime" type="string">
+    Print functionality status
+  </ResponseField>
+  
+  <ResponseField name="condicionesImpresora" type="string">
+    General printer condition notes
+  </ResponseField>
+</Expandable>
+
+### Monitor (`tipoDispositivo: "monitor"`)
+
+<Expandable title="monitor">
+  <ResponseField name="tamanoMonitor" type="string">
+    Monitor size (e.g., "24 inches")
+  </ResponseField>
+  
+  <ResponseField name="colores" type="string">
+    Color display status
+  </ResponseField>
+  
+  <ResponseField name="condicionesMonitor" type="string">
+    General monitor condition notes
+  </ResponseField>
+</Expandable>
+
+## Duplicate Detection
+
+<ResponseField name="dedupeKey" type="string">
+  Composite key for duplicate detection. Format: `{telefono}|{tipoDispositivo}|{marca}|{modelo}`
+  
+  Prevents creating multiple active services for the same device from the same customer.
+</ResponseField>
+
+## Timestamps
+
+<ResponseField name="createdAt" type="timestamp" required>
+  Service creation timestamp. Set automatically by Firestore.
+</ResponseField>
+
+<ResponseField name="updatedAt" type="timestamp" required>
+  Last update timestamp. Updated automatically on every change.
+</ResponseField>
+
+## Example JSON
+
+```json
+{
+  "id": "abc123def456",
+  "folio": "HP/042",
+  "clienteId": "client_xyz789",
+  "nombre": "Juan Pérez",
+  "telefono": "5551234567",
+  "direccion": "Av. Reforma 123, CDMX",
+  "tipoDispositivo": "laptop",
+  "marca": "HP",
+  "modelo": "Pavilion 15",
+  "numeroSerie": "5CD12345AB",
+  "omitirNumeroSerie": false,
+  "trabajo": "No enciende, revisar fuente de poder",
+  "trabajoNorm": "no enciende revisar fuente de poder",
+  "costo": "800",
+  "precioDespues": false,
+  "caracteristicasPendientes": false,
+  "status": "en_proceso",
+  "entregado": false,
+  "fechaEntregado": null,
+  "laptopPc": {
+    "procesador": "Intel Core i5-8250U",
+    "ram": "8 GB",
+    "disco": "256 GB",
+    "estadoPantalla": "Bueno",
+    "estadoTeclado": "Falta tecla ESC",
+    "estadoMouse": "Funcional",
+    "funciona": "No",
+    "enciendeEquipo": "LED parpadea, no arranca",
+    "contrasenaEquipo": ""
+  },
+  "dedupeKey": "5551234567|laptop|hp|pavilion15",
+  "cobradoEnPOS": false,
+  "createdAt": { "_seconds": 1678901234, "_nanoseconds": 567000000 },
+  "updatedAt": { "_seconds": 1678905678, "_nanoseconds": 890000000 }
+}
+```
+
+## Related Functions
+
+- `guardarServicio()` - Create new service ticket with duplicate checking
+- `buscarServicioPorFolio()` - Find service by folio (uses index)
+- `actualizarServicioPorId()` - Update service status and details
+- `listarServiciosPendientes()` - Get all non-final services
+- `listarServiciosHistorial()` - Get completed services
+- `listarServiciosPorClienteId()` - Get all services for a client
+
+See [Servicios Firestore](/api/services/servicios) for detailed function documentation.

@@ -1,0 +1,255 @@
+---
+title: Service Management
+description: Complete system for tracking and managing technical repair services
+icon: wrench
+---
+
+## Overview
+
+The Service Management module is the core of Luis IT Repair's operations, providing a comprehensive system for registering, tracking, and delivering technical repair services for computers, laptops, printers, and monitors.
+
+## Key Capabilities
+
+<CardGroup cols={2}>
+  <Card title="Client Lookup" icon="magnifying-glass">
+    Smart autocomplete search that finds clients by name with fuzzy matching (starts searching after 3 characters)
+  </Card>
+  <Card title="Device Cataloging" icon="laptop">
+    Auto-fill device specifications from CSV catalogs for popular laptop models (Apple, MSI, Lenovo, Dell, HP, etc.)
+  </Card>
+  <Card title="Flexible Serial Numbers" icon="barcode">
+    Optional serial number tracking with "omit serial number" checkbox for devices without accessible serials
+  </Card>
+  <Card title="PDF Generation" icon="file-pdf">
+    Automatic service ticket PDF generation with all service details and unique folio number
+  </Card>
+</CardGroup>
+
+## Creating a Service
+
+### 1. Client Information
+
+The service form starts with client data entry:
+
+- **Name**: Type at least 3 characters to see autocomplete suggestions from existing clients
+- **Phone**: 10-digit numeric field, automatically filtered
+- **Address**: Optional field for client location
+
+<Note>
+  When you select an existing client from suggestions, their information (phone, address, preferred serial number) is automatically filled in.
+</Note>
+
+### 2. Device Selection
+
+Choose from four device types:
+
+- **Laptop**
+- **Desktop PC (Computadora de Escritorio)**
+- **Printer (Impresora)**
+- **Monitor**
+
+Each device type shows relevant fields for that category.
+
+### 3. Laptop/PC Specifications
+
+For computers and laptops, capture detailed hardware information:
+
+```jsx
+// Auto-populated from model catalog
+processor: "Intel Core i5"
+ram: "8 GB"
+disk: "SSD 256 GB"
+
+// Hardware condition
+screenStatus: "Funciona bien" | "Con detalles" | "Dañada"
+keyboardStatus: "Funciona bien" | "Algunas teclas no funcionan" | ...
+mouseStatus: "Funciona bien" | "A veces falla" | "No funciona"
+```
+
+**Key fields:**
+- Processor (with datalist suggestions)
+- RAM (4GB, 8GB, 16GB, 32GB options)
+- Disk (HDD/SSD options)
+- Screen, keyboard, mouse/touchpad condition
+- "Does it work correctly?"
+- "Does it turn on?"
+- Device password (if applicable)
+
+<Tip>
+  Use the "Rellenar características después" checkbox to save the service quickly and fill in specs later.
+</Tip>
+
+### 4. Printer Details
+
+For printers, capture:
+- **Type**: Inkjet, Laser, or Multifunction
+- **Prints correctly?**: Yes/No
+- **Physical conditions**: Free-form textarea
+
+### 5. Monitor Details
+
+For monitors:
+- **Size**: Screen size in inches
+- **Colors correct?**: Yes/No
+- **Physical conditions**: Damage or defects
+
+### 6. Service Details
+
+**Work to Perform**: Describe the repair or service needed
+
+**Cost Estimation**:
+- Enter numeric cost, or
+- Check "Precio se define después del mantenimiento" to determine price later
+
+## Model Auto-Fill System
+
+The system includes a powerful device catalog feature:
+
+```javascript
+// Loads from CSV files
+const { marcasModelos, modelosData } = await cargarCatalogoEquiposDesdeTextos({
+  marcas: ["Apple", "MSI", "Lenovo", "Acer", "Dell", "Asus", "HP"],
+  csvTexts: [doneCsv, updatedCsv]
+});
+
+// Auto-fills specs when model selected
+const specs = obtenerSpecsPorModelo(modelosData, marca, modelo);
+if (specs) {
+  form.procesador = specs.procesador;
+  form.ram = specs.ram;
+  form.disco = specs.disco;
+}
+```
+
+When you select a brand and model, processor, RAM, and disk specifications are automatically filled from the equipment catalog.
+
+## Client Autocomplete
+
+The intelligent client search improves data consistency:
+
+```javascript
+// Searches after 3+ characters typed
+const results = await buscarClientesSimilares(nombre, {
+  maxFetch: 50,
+  maxReturn: 8
+});
+
+// Shows dropdown with matching clients
+// Displays: name, phone, address
+```
+
+<Accordion title="Client Suggestions UI">
+  The suggestion dropdown shows:
+  - Client name (bold)
+  - Phone number with 📞 icon
+  - Address with 📍 icon
+  - Click to auto-fill all client data
+</Accordion>
+
+## Duplicate Detection
+
+The system prevents duplicate service entries:
+
+```javascript
+if (err?.code === "DUPLICATE_SERVICE" && err?.duplicado?.folio) {
+  const abrir = confirm(
+    `${err.message}\n\n¿Quieres abrir ese servicio ahora?`
+  );
+  if (abrir) {
+    navigate(`/servicios/${encodeURIComponent(err.duplicado.folio)}`);
+  }
+}
+```
+
+If you try to register a service with the same serial number for a client, you'll be alerted and offered to open the existing service.
+
+## Form Submission Flow
+
+1. **Validation**: Ensures serial number is provided or explicitly omitted
+2. **Client Creation/Update**:
+   - Updates existing client if selected
+   - Creates new client if not found
+3. **Service Registration**: Saves service with auto-generated folio
+4. **PDF Generation**: Creates service ticket PDF
+5. **Navigation**: Redirects to ticket view page
+
+```javascript
+const res = await guardarServicio({
+  ...form,
+  clienteId: clienteIdFinal
+});
+
+await generarPdfHojaServicio(form, res.folio);
+
+navigate(`/ticket/${encodeURIComponent(res.folio)}`);
+```
+
+## Service Status Tracking
+
+Services progress through multiple states:
+
+- **Pending (Pendiente)**: Initial state
+- **In Progress**: Being worked on
+- **Ready (Listo)**: Completed and ready for pickup
+- **Delivered (Entregado)**: Picked up and paid by client
+
+<Note>
+  Services in "Listo" status automatically appear in the POS system for payment and delivery.
+</Note>
+
+## Integration with Other Features
+
+### Client Management
+- Client data is synced with the central client database
+- Service history is tracked per client
+- Preferred serial numbers are remembered
+
+### Point of Sale
+- Services with "Listo" status can be charged in POS
+- Service cost is added to the sale total
+- Status automatically changes to "Entregado" after payment
+
+### Reports
+- Service revenue is included in daily reports
+- Service items appear in sales analytics
+- Tracked in cash register closing process
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Serial Number Management">
+    - Always capture serial numbers when visible
+    - Use the "omit" option only when absolutely necessary
+    - This prevents duplicate service entries
+  </Accordion>
+  
+  <Accordion title="Spec Documentation">
+    - Let the system auto-fill specs when possible
+    - Verify auto-filled specs match the actual device
+    - Use the "fill later" option during busy periods
+  </Accordion>
+  
+  <Accordion title="Cost Estimation">
+    - Provide estimates when possible for customer transparency
+    - Use "define price later" for complex repairs requiring diagnosis
+    - Update cost before marking service as "Listo"
+  </Accordion>
+</AccordionGroup>
+
+## Technical Implementation
+
+The service form is located at `src/pages/Hoja_service.jsx` and uses:
+
+- **Firebase Firestore** for data persistence
+- **React hooks** for state management
+- **CSV catalogs** for device specifications
+- **PDF generation** via jsPDF library
+- **React Router** for navigation
+
+```javascript
+import { guardarServicio } from "../js/services/servicios_firestore";
+import { cargarCatalogoEquiposDesdeTextos } from "../js/models_equipos";
+import { generarPdfHojaServicio } from "../js/services/pdf_hoja_servicio";
+import { buscarClientesSimilares, crearCliente, actualizarCliente } 
+  from "../js/services/clientes_firestore";
+```

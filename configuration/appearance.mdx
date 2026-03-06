@@ -1,0 +1,471 @@
+---
+title: Appearance Settings
+description: Customize theme, colors, fonts, and visual presentation
+icon: palette
+---
+
+## Overview
+
+The Appearance Settings page (`/configuracion/apariencia`) allows users to personalize the visual presentation of Luis IT Repair, including:
+
+- Light/dark theme modes
+- Accent color selection
+- Font customization for tickets and PDFs
+- Density and spacing preferences
+- Accessibility options
+- Regional formatting
+
+All settings are stored per-user in `localStorage` and apply immediately without page refresh.
+
+## Theme and Visual Mode
+
+### Theme Mode
+
+<ParamField path="themeMode" type="enum" default="claro">
+  Visual theme:
+  - `claro`: Light theme with white/light backgrounds
+  - `oscuro`: Dark theme with dark backgrounds
+</ParamField>
+
+The theme applies immediately to:
+- Background colors
+- Text colors
+- Component borders and shadows
+- Form inputs and buttons
+
+**CSS Classes Applied:**
+- Light mode: `body.ui-theme-light`
+- Dark mode: `body.ui-theme-dark`
+
+## Accent Colors
+
+<ParamField path="accent" type="enum" default="azul">
+  Primary accent color for UI elements:
+  - `azul`: Blue (#2563eb)
+  - `verde`: Green (#16a34a)
+  - `turquesa`: Turquoise/Teal (#0d9488)
+  - `naranja`: Orange (#ea580c)
+</ParamField>
+
+### Color Palette
+
+<CodeGroup>
+```javascript Azul (Blue)
+{
+  primary: "#2563eb",
+  strong: "#1d4ed8",
+  deep: "#1e3a8a",
+  navbarStart: "#1d4ed8",
+  navbarEnd: "#1e3a8a"
+}
+```
+
+```javascript Verde (Green)
+{
+  primary: "#16a34a",
+  strong: "#15803d",
+  deep: "#14532d",
+  navbarStart: "#15803d",
+  navbarEnd: "#14532d"
+}
+```
+
+```javascript Turquesa (Teal)
+{
+  primary: "#0d9488",
+  strong: "#0f766e",
+  deep: "#134e4a",
+  navbarStart: "#0f766e",
+  navbarEnd: "#134e4a"
+}
+```
+
+```javascript Naranja (Orange)
+{
+  primary: "#ea580c",
+  strong: "#c2410c",
+  deep: "#7c2d12",
+  navbarStart: "#c2410c",
+  navbarEnd: "#7c2d12"
+}
+```
+</CodeGroup>
+
+### CSS Variables
+
+The system applies accent colors via CSS custom properties:
+
+```css
+:root {
+  --app-accent: #2563eb;
+  --app-accent-strong: #1d4ed8;
+  --app-accent-deep: #1e3a8a;
+  --app-accent-rgb: 37, 99, 235;
+  --app-accent-soft: rgba(37, 99, 235, 0.18);
+  --app-accent-soft-2: rgba(37, 99, 235, 0.28);
+  --app-navbar-start: #1d4ed8;
+  --app-navbar-end: #1e3a8a;
+  --bs-primary: #2563eb;
+  --bs-primary-rgb: 37, 99, 235;
+  --bs-link-color: #2563eb;
+  --bs-link-hover-color: #1d4ed8;
+}
+```
+
+## Font Configuration
+
+### Ticket Font
+
+<ParamField path="ticketFont" type="enum" default="mono">
+  Font for printed receipts:
+  - `mono`: Monospaced ("Courier New", monospace) - Traditional ticket style
+  - `ui`: UI-readable ("Segoe UI", Arial, sans-serif)
+  - `compacta`: Compact (Arial, Helvetica, sans-serif)
+</ParamField>
+
+The ticket font affects:
+- Thermal printer output
+- Screen preview of tickets
+- Ticket PDFs
+
+**CSS Variable:**
+```css
+--app-ticket-font: "Courier New", "Liberation Mono", monospace;
+```
+
+### PDF Font
+
+<ParamField path="pdfFont" type="enum" default="helvetica">
+  Font for PDF generation:
+  - `helvetica`: Clean, professional sans-serif
+  - `courier`: Monospaced, typewriter style
+  - `times`: Serif font for formal documents
+</ParamField>
+
+Used in jsPDF generation for:
+- Invoices
+- Service reports
+- Export documents
+
+## Layout Preferences
+
+### Visual Density
+
+<ParamField path="density" type="enum" default="normal">
+  UI spacing and padding:
+  - `normal`: Standard spacing
+  - `compacta`: Reduced spacing for more content on screen
+</ParamField>
+
+**CSS Class:**
+```css
+body.ui-density-compact {
+  /* Reduced padding and margins */
+}
+```
+
+### Border Radius
+
+<ParamField path="radius" type="enum" default="suave">
+  Roundness of UI elements:
+  - `cuadrado`: 8px - Minimal rounding
+  - `suave`: 12px - Moderate rounding (default)
+  - `redondeado`: 16px - Maximum rounding
+</ParamField>
+
+**CSS Variable:**
+```css
+--app-radius: 12px;
+```
+
+Applies to:
+- Buttons
+- Cards
+- Input fields
+- Modals and dialogs
+
+## Accessibility
+
+### Font Scale
+
+<ParamField path="fontScale" type="enum" default="normal">
+  Base font size multiplier:
+  - `pequeno`: 0.95 - Smaller text
+  - `normal`: 1.0 - Standard size
+  - `grande`: 1.06 - Larger text for improved readability
+</ParamField>
+
+**CSS Variable:**
+```css
+--app-font-scale: 1.0;
+```
+
+### Contrast Mode
+
+<ParamField path="contrast" type="enum" default="normal">
+  Color contrast level:
+  - `normal`: Standard contrast ratios
+  - `alto`: Enhanced contrast for accessibility (WCAG AAA)
+</ParamField>
+
+**CSS Class:**
+```css
+body.ui-high-contrast {
+  /* Enhanced color contrast */
+}
+```
+
+### Animations
+
+<ParamField path="animations" type="boolean" default="true">
+  Enable or disable UI animations and transitions.
+  
+  Disable for:
+  - Reduced motion preferences
+  - Performance on low-end devices
+  - Accessibility (vestibular disorders)
+</ParamField>
+
+**CSS Class:**
+```css
+body.ui-no-motion * {
+  animation: none !important;
+  transition: none !important;
+}
+```
+
+## Regional Settings
+
+### Language
+
+<ParamField path="language" type="enum" default="es-MX">
+  Interface language:
+  - `es-MX`: Español (Mexico)
+  - `en-US`: English (United States)
+</ParamField>
+
+Sets `document.documentElement.lang` for:
+- Screen readers
+- Browser translation
+- Regional formatting
+
+### Date Format
+
+<ParamField path="dateFormat" type="enum" default="dd/mm/aaaa">
+  Date display format:
+  - `dd/mm/aaaa`: Day/Month/Year (Mexican standard)
+  - `mm/dd/aaaa`: Month/Day/Year (US standard)
+  - `aaaa-mm-dd`: ISO 8601 (YYYY-MM-DD)
+</ParamField>
+
+## Configuration Storage
+
+Settings are stored per-user in localStorage:
+
+```javascript
+localStorage.getItem('app_apariencia_config_v2_<user-uid>')
+```
+
+**Full Structure:**
+
+```json
+{
+  "themeMode": "claro",
+  "accent": "azul",
+  "density": "normal",
+  "radius": "suave",
+  "animations": true,
+  "contrast": "normal",
+  "fontScale": "normal",
+  "ticketFont": "mono",
+  "pdfFont": "helvetica",
+  "language": "es-MX",
+  "dateFormat": "dd/mm/aaaa"
+}
+```
+
+<Note>
+  An anonymous fallback key is also maintained (`app_apariencia_config_v2_anon`) for pre-authentication settings.
+</Note>
+
+## Service Integration
+
+### Reading Configuration
+
+```javascript
+import { readAparienciaConfigStorage } from "../js/services/apariencia_config";
+import { auth } from "../initializer/firebase";
+
+const userId = auth.currentUser?.uid || null;
+const config = readAparienciaConfigStorage(userId);
+
+console.log(config);
+// { themeMode: "claro", accent: "azul", ... }
+```
+
+### Saving Configuration
+
+```javascript
+import { saveAparienciaConfigStorage } from "../js/services/apariencia_config";
+
+const success = saveAparienciaConfigStorage(
+  { ...config, themeMode: "oscuro" },
+  userId
+);
+```
+
+### Applying Configuration
+
+```javascript
+import { applyAparienciaConfig } from "../js/services/apariencia_config";
+
+// Apply configuration to DOM
+applyAparienciaConfig(config);
+```
+
+This function:
+1. Sets CSS custom properties on `:root`
+2. Adds/removes body classes
+3. Sets `document.documentElement.lang`
+4. Dispatches `app:appearance-changed` event
+
+### Listening for Changes
+
+```javascript
+window.addEventListener('app:appearance-changed', (event) => {
+  const newConfig = event.detail;
+  console.log('Appearance updated:', newConfig);
+  
+  // Refresh components, charts, etc.
+});
+```
+
+## Live Preview
+
+The configuration page includes a live preview card that demonstrates:
+
+- Current accent color
+- Theme mode (light/dark)
+- Ticket font style
+- PDF font selection
+- Button styling
+
+Changes are reflected instantly in the preview.
+
+## Reset to Defaults
+
+Click the **Restablecer** button to reset all appearance settings to defaults:
+
+```javascript
+const DEFAULT_APARIENCIA_CONFIG = {
+  themeMode: "claro",
+  accent: "azul",
+  density: "normal",
+  radius: "suave",
+  animations: true,
+  contrast: "normal",
+  fontScale: "normal",
+  ticketFont: "mono",
+  pdfFont: "helvetica",
+  language: "es-MX",
+  dateFormat: "dd/mm/aaaa"
+};
+```
+
+## Feature Highlights
+
+The appearance system supports:
+
+<CardGroup cols={2}>
+  <Card title="Per-User Themes" icon="user">
+    Each user can have their own visual preferences
+  </Card>
+  <Card title="Light/Dark Mode" icon="circle-half-stroke">
+    Automatic application of theme across all components
+  </Card>
+  <Card title="Custom Branding" icon="palette">
+    Logo and accent colors by branch/location
+  </Card>
+  <Card title="Regional Formats" icon="globe">
+    Currency and date formatting per locale
+  </Card>
+  <Card title="Keyboard Shortcuts" icon="keyboard">
+    Accessibility support with keyboard navigation
+  </Card>
+  <Card title="Role-Based Themes" icon="users">
+    Different visual profiles for cashier/tech/admin
+  </Card>
+</CardGroup>
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Test in Both Themes">
+    Always test your workflows in both light and dark modes to ensure readability.
+  </Accordion>
+
+  <Accordion title="Use High Contrast for Accessibility">
+    Enable high contrast mode if users have visual impairments or work in bright environments.
+  </Accordion>
+
+  <Accordion title="Disable Animations for Performance">
+    On older devices or when experiencing lag, disable animations for better performance.
+  </Accordion>
+
+  <Accordion title="Monospace Fonts for Tickets">
+    Keep `ticketFont` as `mono` for best thermal printer compatibility.
+  </Accordion>
+
+  <Accordion title="Consistent Branding">
+    Choose one accent color and stick with it for brand consistency across your business.
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Theme Not Applying">
+    Check that `applyAparienciaConfig()` is called on app initialization:
+
+    ```javascript
+    import { applyAparienciaFromStorage } from "./js/services/apariencia_config";
+
+    // In your main.jsx or App.jsx
+    useEffect(() => {
+      applyAparienciaFromStorage();
+    }, []);
+    ```
+  </Accordion>
+
+  <Accordion title="Settings Not Persisting">
+    Verify localStorage is enabled:
+
+    ```javascript
+    try {
+      localStorage.setItem('test', '1');
+      localStorage.removeItem('test');
+    } catch (e) {
+      console.error('localStorage disabled:', e);
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Colors Not Updating">
+    Hard refresh the page (Ctrl+Shift+R) to clear cached CSS.
+  </Accordion>
+
+  <Accordion title="Font Not Changing">
+    Ensure the font family is installed on the system for ticket printing. For web display, fonts should work immediately.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="POS Settings" icon="cash-register" href="/configuration/pos-settings">
+    Configure IVA, billing, and receipts
+  </Card>
+  <Card title="Firebase Setup" icon="fire" href="/configuration/firebase-setup">
+    Set up backend infrastructure
+  </Card>
+</CardGroup>

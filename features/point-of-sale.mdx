@@ -1,0 +1,403 @@
+---
+title: Point of Sale (POS)
+description: Modern POS system with barcode scanning, mixed payments, and mobile support
+icon: cash-register
+---
+
+## Overview
+
+The Point of Sale system is a full-featured sales terminal that handles product sales, service payments, loyalty points, and cash register management. It supports both desktop and mobile interfaces with real-time synchronization.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Barcode Scanning" icon="barcode">
+    Desktop scanner integration with automatic product detection and mobile scanner sync
+  </Card>
+  <Card title="Mixed Payments" icon="money-bill-wave">
+    Accept cash, card, and bank transfer in a single transaction with automatic calculations
+  </Card>
+  <Card title="Service Integration" icon="screwdriver-wrench">
+    Directly charge completed repair services and mark them as delivered
+  </Card>
+  <Card title="Loyalty Points" icon="star">
+    Automatic point generation (1 point per $10) with redemption system
+  </Card>
+  <Card title="Cash Control" icon="vault">
+    Daily cash register opening/closing with denomination counting and reconciliation
+  </Card>
+  <Card title="Mobile Interface" icon="mobile">
+    Responsive design with dedicated mobile scanner for remote scanning
+  </Card>
+</CardGroup>
+
+## Desktop POS Interface
+
+### Main Search Bar
+
+The primary input field accepts:
+
+```javascript
+// Product codes (exact match)
+const productoPorCodigo = productosDB.find(
+  p => String(p.codigo).trim().toLowerCase() === terminoNormalizado
+);
+
+// Service folios (searches Firestore)
+const servicio = await buscarServicioPorFolio(termino);
+
+// Product names (partial match, shows selector if multiple)
+const coincidencias = productosDB.filter(
+  p => String(p.nombre).toLowerCase().includes(terminoNormalizado)
+);
+```
+
+**Input Methods:**
+- Type product name and press Enter
+- Scan barcode (auto-detects after 120ms delay)
+- Enter service folio number
+- Use "Pagar servicio" button for service list
+
+<Note>
+  The search bar auto-focuses and remains accessible throughout the sale process.
+</Note>
+
+### Shopping Cart
+
+The cart displays all items with:
+
+| Column | Description |
+|--------|-------------|
+| Producto | Product or service name |
+| Cant | Quantity (auto-increments on re-scan) |
+| Precio | Unit price |
+| Total | Line total (quantity × price) |
+| Actions | Compare prices, remove item |
+
+**Cart Operations:**
+- Add products: Scan or search
+- Adjust quantity: Re-scan to increment by 1
+- Remove items: Click X button
+- Clear all: "Vaciar" button
+
+<Tip>
+  The system automatically prevents adding more items than available stock.
+</Tip>
+
+## Payment Processing
+
+### Client Lookup (Optional)
+
+Enter a 10-digit phone number to:
+- Link sale to customer account
+- Apply loyalty points
+- Earn points from purchase
+
+```javascript
+const cliente = await buscarClientePorTelefono(clienteTelefono);
+
+if (clienteData) {
+  // Show current points
+  // Show points to be earned
+  // Enable point redemption
+}
+```
+
+### Payment Modal
+
+Click "Realizar Venta" to open the professional payment modal:
+
+<Accordion title="Payment Options">
+  **Single Method:**
+  - Cash (Efectivo)
+  - Card (Tarjeta) - requires reference number
+  - Transfer (Transferencia)
+
+  **Mixed Payment:**
+  Enter amounts for multiple methods:
+  - `montoEfectivo`: Cash amount
+  - `montoTarjeta`: Card amount
+  - `montoTransferencia`: Transfer amount
+  
+  Total paid must equal or exceed sale total.
+</Accordion>
+
+### Discounts and Points
+
+**Manual Discount:**
+```javascript
+const subtotalConDescuento = subtotal - descuentoManual - descuentoPuntos;
+```
+
+**Point Redemption:**
+- Toggle "Usar puntos" checkbox
+- System applies available points (max: sale subtotal)
+- Points are deducted after sale confirmation
+
+**Point Generation:**
+```javascript
+const puntosGenerados = Math.floor(total / 10);
+// $100 sale = 10 points
+```
+
+### Tax Calculation
+
+IVA (VAT) is configurable via localStorage:
+
+```javascript
+const aplicarIVA = localStorage.getItem("pos_aplicar_iva") !== "0";
+const ivaRate = aplicarIVA ? 0.16 : 0;
+const iva = subtotalConDescuento * ivaRate;
+const total = subtotalConDescuento + iva;
+```
+
+## Service Payment Workflow
+
+### Selecting Services
+
+1. Click "Pagar servicio" button
+2. System loads services with status "listo" (ready)
+3. Only services with `costo > 0` and not yet charged appear
+4. Select service to add to cart
+
+```javascript
+const listos = pendientes
+  .filter(s => normalizarEstado(s?.status) === "listo")
+  .filter(s => !Boolean(s?.cobradoEnPOS))
+  .filter(s => parseCosto(s?.costo) > 0)
+  .sort((a, b) => updatedAt(b) - updatedAt(a));
+```
+
+### Service Cart Item
+
+Services appear in cart as:
+
+```javascript
+{
+  id: `servicio-${servicio.id}`,
+  codigo: servicio.folio || "-",
+  nombre: `Servicio ${servicio.folio} - ${servicio.nombre}`,
+  precioVenta: costoServicio,
+  cantidad: 1,
+  esServicio: true,
+  servicioId: servicio.id
+}
+```
+
+### Auto-Complete Client Data
+
+When adding a service, client data is automatically populated:
+
+```javascript
+if (autocompletarCliente) {
+  const cliente = await obtenerClientePorId(servicio.clienteId);
+  setClienteTelefono(cliente?.telefono || servicio.telefono);
+  setClienteData(cliente);
+}
+```
+
+### Post-Payment Service Update
+
+```javascript
+await actualizarServicioPorId(servicio.id, {
+  status: "entregado",
+  cobradoEnPOS: true,
+  fechaCobro: new Date(),
+  boletaStockAjustado: true, // if parts used
+  boletaStockAjustadoAt: new Date()
+});
+```
+
+## Inventory Management
+
+### Stock Validation
+
+Before completing a sale, the system validates stock:
+
+```javascript
+// Check cart products
+carrito.forEach(item => {
+  const requerido = item.cantidad;
+  if (requerido > item.stock) {
+    faltantesInventario.push({ nombre, stockActual, requerido });
+  }
+});
+
+// Check service boleta (parts used)
+consumoBoletaServicios(serviciosPorEntregar).forEach(({ producto, cantidad }) => {
+  if (cantidad > producto.stock) {
+    faltantes.push({ nombre, stockActual, requerido });
+  }
+});
+
+if (faltantesInventario.length > 0) {
+  alert(`No hay stock suficiente para completar la venta.\n${detalle}`);
+  return;
+}
+```
+
+### Stock Deduction
+
+After successful payment:
+
+```javascript
+for (const [productoId, requerido] of requeridosPorProducto.entries()) {
+  const nuevoStock = Math.max(0, stockActual - requerido);
+  await descontarStock(productoId, nuevoStock);
+}
+```
+
+## Cash Register Control
+
+### Daily Opening
+
+Before any sales, the system requires cash register opening:
+
+```javascript
+const faltaFondoInicial = !cajaCerradaHoy && !tieneFondoInicialRegistrado;
+
+if (faltaFondoInicial) {
+  setMostrarAperturaModal(true);
+  // All POS functions blocked until opening registered
+}
+
+await registrarAperturaCaja(fondoInicial, {
+  uid: auth.currentUser?.uid,
+  email: auth.currentUser?.email,
+  nombre: auth.currentUser?.displayName
+});
+```
+
+<Note>
+  The system automatically checks cash register status every 60 seconds.
+</Note>
+
+### Sales Locking
+
+When cash register is closed:
+
+```javascript
+if (cajaCerradaHoy) {
+  // Disable all inputs
+  // Clear cart and pending services
+  // Show alert: "La caja de hoy ya está cerrada. Las ventas se habilitan de nuevo mañana."
+}
+```
+
+## Mobile POS Mode
+
+### Detection
+
+The system automatically detects mobile devices:
+
+```javascript
+const detectarVistaMovilPOS = () => {
+  const byWidth = window.matchMedia("(max-width: 1024px)").matches;
+  const byPointer = window.matchMedia("(pointer: coarse)").matches;
+  return byWidth || byPointer;
+};
+```
+
+### Mobile Interface
+
+Mobile users see a specialized scanner interface:
+
+```jsx
+<POSMobileScanner
+  disabled={scannerBloqueado}
+  disabledMessage={scannerBloqueadoMsg}
+  itemsCount={carrito.length}
+  total={total}
+  onResolveCode={resolverCodigoMovil}
+/>
+```
+
+### Remote Scanning Sync
+
+Mobile scans are sent to desktop POS for processing:
+
+```javascript
+// Mobile: Send scan
+await enviarScanPosMovil({
+  uid,
+  termino: barcode,
+  actorUid: uid,
+  actorEmail: auth.currentUser?.email
+});
+
+// Desktop: Process scan
+const result = await buscarYAgregarPorTermino(termino, {
+  mostrarAlertas: false,
+  permitirBusquedaNombre: false
+});
+
+await finalizarScanPos(scan.id, {
+  status: "processed",
+  result
+});
+```
+
+## Receipt Printing
+
+After successful sale:
+
+```javascript
+imprimirTicketVenta({
+  ventaId,
+  fecha: new Date(),
+  atendio: auth.currentUser?.displayName || auth.currentUser?.email,
+  cliente: {
+    nombre: clienteData?.nombre || "Publico general",
+    telefono: clienteTelefono || "-"
+  },
+  tipoPago,
+  referenciaTarjeta,
+  productos: carrito,
+  estado: serviciosPorEntregar.length > 0 ? "Entregado" : "Pagado",
+  subtotal,
+  aplicaIVA,
+  ivaPorcentaje,
+  iva,
+  total
+});
+```
+
+## Price Comparison
+
+Click "Comparar" button on any product to see marketplace prices:
+
+```jsx
+<ModalComparadorPrecios
+  mostrar={mostrarComparador}
+  producto={productoComparar}
+  onClose={() => {
+    setMostrarComparador(false);
+    setProductoComparar(null);
+  }}
+/>
+```
+
+<Tip>
+  This helps verify competitive pricing in real-time during sales.
+</Tip>
+
+## Technical Implementation
+
+The POS system (`src/pages/POS.jsx`) uses:
+
+- **React hooks** for complex state management
+- **Firebase Realtime sync** for mobile-desktop communication
+- **Firestore transactions** for atomic inventory updates
+- **LocalStorage** for IVA configuration
+- **Responsive design** for mobile/desktop adaptation
+
+```javascript
+import { obtenerProductos, registrarVenta, descontarStock } 
+  from "../js/services/POS_firebase";
+import { buscarServicioPorFolio, actualizarServicioPorId } 
+  from "../js/services/servicios_firestore";
+import { estaCajaCerradaHoy, registrarAperturaCaja } 
+  from "../js/services/corte_caja_firestore";
+import { enviarScanPosMovil, suscribirScansPosUsuario } 
+  from "../js/services/pos_sync_firestore";
+```

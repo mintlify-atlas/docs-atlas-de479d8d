@@ -1,0 +1,443 @@
+---
+title: Tracking Inventory
+description: Managing product inventory, stock levels, and parts for repairs in Luis IT Repair
+---
+
+## Overview
+
+The inventory system tracks products available for sale, manages stock levels, monitors pricing margins, and integrates with the POS system for automatic stock deduction.
+
+## Prerequisites
+
+- Permission: `productos.ver` (View Products)
+- Active user account (typically Administrador or Cajero role)
+
+## Product Management
+
+### Accessing Product Catalog
+
+Navigate to `/productos` to view and manage inventory.
+
+The products page displays:
+- Product name and barcode
+- Category and type
+- Purchase and sale prices with margin calculation
+- Current stock levels
+- Active/Inactive status
+
+See: `src/pages/productos.jsx`
+
+### Product Data Structure
+
+```javascript
+{
+  id: "auto-generated-firestore-id",
+  nombre: "Cable HDMI 2m",
+  codigo: "7501234567890",           // Barcode (must be unique)
+  categoria: "Cables y Conectores",
+  tipo: "producto",                  // producto | refaccion | servicio
+  precioCompra: 45.50,
+  precioVenta: 89.99,
+  stock: 25,
+  stockMinimo: 5,
+  compatible: "HDMI 2.0, 4K",        // Compatibility notes
+  generaPuntos: true,                 // Earns loyalty points
+  activo: true                        // Available for sale
+}
+```
+
+## Creating Products
+
+<Steps>
+
+### Click "+ Nuevo Producto"
+
+Opens the product creation modal.
+
+### Enter Product Details
+
+**Required Fields:**
+- **Nombre**: Product name/description
+- **Codigo**: Barcode or SKU (must be unique)
+- **Precio Venta**: Sale price
+
+**Optional Fields:**
+- **Categoria**: Product category for organization
+- **Tipo**: Product type (producto, refaccion, servicio)
+- **Precio Compra**: Cost/purchase price
+- **Stock**: Initial quantity
+- **Stock Minimo**: Low stock alert threshold
+- **Compatible**: Compatibility information
+
+### Validate Barcode Uniqueness
+
+The system checks for duplicate codes:
+
+```javascript
+const existeCodigoRegistrado = (codigo, idActual = null) => {
+  const codigoNormalizado = normalizarCodigo(codigo);
+  if (!codigoNormalizado) return false;
+  
+  return productos.some((p) => {
+    const mismoCodigo = normalizarCodigo(p.codigo) === codigoNormalizado;
+    const otroProducto = idActual ? p.id !== idActual : true;
+    return mismoCodigo && otroProducto;
+  });
+};
+```
+
+<Warning>
+Barcode codes must be unique across all products. The system alerts you on blur if a duplicate is detected.
+</Warning>
+
+### Save Product
+
+Click **"Guardar"** to create the product record.
+
+</Steps>
+
+## Editing Products
+
+There are two ways to edit products:
+
+### 1. Edit from Product Table
+
+Click **"Editar"** on any product row to open the edit modal with pre-filled data.
+
+### 2. Quick Edit by Barcode
+
+Click **"Modificar por codigo"** to:
+
+<Steps>
+1. Scan or type the product barcode
+2. System searches for matching product
+3. Edit modal opens with that product's data
+4. Make changes and save
+</Steps>
+
+```javascript
+const buscarProductoPorCodigo = () => {
+  const codigoNormalizado = normalizarCodigo(codigoBusqueda);
+  
+  const producto = productos.find(
+    (p) => normalizarCodigo(p.codigo) === codigoNormalizado
+  );
+  
+  if (!producto) {
+    setErrorCodigoBusqueda("No se encontro un producto con ese codigo.");
+    return;
+  }
+  
+  editarProducto(producto);
+};
+```
+
+<Note>
+The "Modificar por codigo" feature is perfect for quick price updates or stock adjustments using a barcode scanner.
+</Note>
+
+## Stock Management
+
+### Manual Stock Adjustment
+
+1. Edit the product
+2. Update the **Stock** field
+3. Save changes
+
+### Automatic Stock Deduction
+
+Stock decreases automatically when:
+
+1. **Product sold in POS**:
+```javascript
+for (const [productoId, requerido] of requeridosPorProducto.entries()) {
+  if (requerido <= 0) continue;
+  
+  const stockActual = Number(
+    stockMetaPorProducto.get(productoId)?.stockActual || 0
+  );
+  const nuevoStock = Math.max(0, stockActual - requerido);
+  
+  await descontarStock(productoId, nuevoStock);
+}
+```
+
+2. **Service boleta items consumed**:
+   - When a service with attached parts list is sold
+   - Products listed in `servicio.boleta.items` are deducted
+   - Service flagged with `boletaStockAjustado: true`
+
+<Warning>
+The POS validates total stock requirements (cart items + service boleta items) before allowing sale. If insufficient stock exists, the sale is blocked with a detailed error message.
+</Warning>
+
+### Stock Validation in POS
+
+```javascript
+// Consolidate all product requirements
+const requeridosPorProducto = new Map();
+
+// From cart
+carrito.forEach((item) => {
+  if (!item.esServicio) {
+    const prev = requeridosPorProducto.get(item.id) || 0;
+    requeridosPorProducto.set(item.id, prev + item.cantidad);
+  }
+});
+
+// From service boletas
+consumoBoletaServicios.forEach(({ producto, cantidad }) => {
+  const prev = requeridosPorProducto.get(productoId) || 0;
+  requeridosPorProducto.set(productoId, prev + cantidad);
+});
+
+// Validate
+const faltantesInventario = [];
+requeridosPorProducto.forEach((requerido, productoId) => {
+  const stockActual = stockMetaPorProducto.get(productoId).stockActual;
+  if (requerido > stockActual) {
+    faltantesInventario.push({
+      nombre: meta.nombre,
+      stockActual,
+      requerido
+    });
+  }
+});
+
+if (faltantesInventario.length > 0) {
+  alert(`No hay stock suficiente para completar la venta.\n${detalle}`);
+  return;
+}
+```
+
+See: `src/pages/POS.jsx:702-777`
+
+## Pricing & Margins
+
+### Margin Calculation
+
+The system displays profit margin for each product:
+
+```javascript
+const calcularMargen = (compra, venta) => {
+  if (!compra || !venta) return 0;
+  return (((venta - compra) / compra) * 100).toFixed(1);
+};
+```
+
+**Example:**
+- Purchase Price: $50
+- Sale Price: $89
+- Margin: 78%
+
+### Price Comparison Tool
+
+During POS sales, click **"Comparar"** to view marketplace prices and adjust your pricing strategy.
+
+See: `src/components/modal_comparador_precios.jsx`
+
+## Product Types
+
+### Producto (Product)
+Standard retail items for sale:
+- Consumer electronics
+- Accessories
+- Peripherals
+
+### Refacción (Replacement Part)
+Parts used in repairs:
+- Laptop screens
+- Hard drives
+- RAM modules
+- Batteries
+
+### Servicio (Service)
+Billable services without physical inventory:
+- Software installation
+- Virus removal
+- Data recovery
+
+<Note>
+All types follow the same stock management rules. "Servicio" type products can have stock = 0 if they're purely labor.
+</Note>
+
+## Low Stock Alerts
+
+The `stockMinimo` field sets the reorder threshold:
+
+```javascript
+if (producto.stock <= producto.stockMinimo) {
+  // Display low stock warning
+  // Consider automated reorder notification
+}
+```
+
+<Note>
+Implement a custom report or dashboard widget to monitor products below minimum stock levels for proactive reordering.
+</Note>
+
+## Service Boletas
+
+Services can include a parts list (boleta) tracking components used:
+
+```javascript
+// Service with boleta
+{
+  id: "service-123",
+  folio: "MSI/042",
+  status: "listo",
+  boleta: {
+    items: [
+      {
+        productoId: "prod-456",
+        codigo: "7501234567890",
+        nombre: "RAM DDR4 8GB",
+        cantidad: 2,
+        precio: 450
+      },
+      {
+        productoId: "prod-789",
+        codigo: "7509876543210",
+        nombre: "SSD 256GB",
+        cantidad: 1,
+        precio: 850
+      }
+    ]
+  },
+  boletaStockAjustado: false  // Becomes true after POS sale
+}
+```
+
+**Boleta Stock Flow:**
+
+1. Technician adds parts to service boleta during repair
+2. Service marked as "Listo"
+3. Service added to POS cart
+4. POS calculates total stock requirements (cart + boleta)
+5. On sale confirmation, all boleta items deducted from inventory
+6. Service flagged: `boletaStockAjustado: true`
+
+See: `src/pages/POS.jsx:131-171`
+
+## Barcode Scanning
+
+The system supports standard USB barcode scanners:
+
+- **In POS**: Scan to add products to cart
+- **In Products**: Use "Modificar por codigo" for quick edits
+- **Barcodes** should be unique identifiers (EAN, UPC, or internal SKUs)
+
+```javascript
+// POS auto-add on barcode scan
+useEffect(() => {
+  const termino = busqueda.trim();
+  if (!termino) return;
+  
+  const terminoNormalizado = termino.toLowerCase();
+  const productoPorCodigo = productosDB.find((p) =>
+    String(p.codigo ?? "").trim().toLowerCase() === terminoNormalizado
+  );
+  
+  if (!productoPorCodigo) return;
+  
+  // Wait 120ms after scan completes
+  const timer = setTimeout(() => {
+    agregarAlCarrito(productoPorCodigo);
+    setBusqueda("");
+  }, 120);
+  
+  return () => clearTimeout(timer);
+}, [busqueda, productosDB]);
+```
+
+See: `src/pages/POS.jsx:235-255`
+
+## Deleting Products
+
+<Steps>
+
+1. Click **"Eliminar"** on product row
+2. Confirm deletion in alert dialog
+3. Product removed from database
+
+</Steps>
+
+<Warning>
+Deleting products that have been sold creates orphaned references in sales history. Consider setting `activo: false` instead of deleting.
+</Warning>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Unique Barcodes" icon="barcode">
+    Always use unique barcode identifiers to prevent scanning conflicts in POS.
+  </Card>
+  
+  <Card title="Set Minimum Stock" icon="triangle-exclamation">
+    Configure stockMinimo for critical items to avoid stockouts during repairs.
+  </Card>
+  
+  <Card title="Track Margins" icon="percent">
+    Monitor profit margins to ensure sustainable pricing across product categories.
+  </Card>
+  
+  <Card title="Deactivate, Don't Delete" icon="eye-slash">
+    Set activo=false for discontinued items instead of deleting them.
+  </Card>
+</CardGroup>
+
+## Reporting
+
+### Inventory Value
+
+```javascript
+const inventoryValue = productos.reduce((total, p) => {
+  return total + (p.precioCompra * p.stock);
+}, 0);
+```
+
+### Potential Revenue
+
+```javascript
+const potentialRevenue = productos.reduce((total, p) => {
+  return total + (p.precioVenta * p.stock);
+}, 0);
+```
+
+### Low Stock Items
+
+```javascript
+const lowStock = productos.filter(p => 
+  p.stock <= p.stockMinimo && p.activo
+);
+```
+
+## Troubleshooting
+
+**"Codigo ya esta dado de alta" error?**
+- Barcode already exists in system
+- Search for existing product by code
+- Update existing product instead of creating duplicate
+- Use internal SKU if manufacturer barcode conflicts
+
+**Stock showing negative values?**
+- Should never happen with validation in place
+- Indicates manual database modification or race condition
+- Reset to 0 and investigate transaction history
+
+**POS blocking sale with "stock insuficiente"?**
+- Check both cart quantities and service boleta items
+- One product may be required in multiple places
+- Update stock levels if physical inventory is higher
+
+**Barcode scanner not working?**
+- Verify scanner is in keyboard emulation mode
+- Test by scanning into a text editor
+- Check for correct terminator character (usually Enter)
+- Ensure 120ms auto-add delay is sufficient for your scanner
+
+## Related Workflows
+
+- [Processing Sales](/guides/processing-sales) - How POS uses inventory
+- [Creating Service Tickets](/guides/creating-service-tickets) - Service boleta creation
+- [Permissions & Roles](/guides/permissions-roles) - Understanding the `productos.ver` permission

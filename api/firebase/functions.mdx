@@ -1,0 +1,465 @@
+---
+title: 'Cloud Functions'
+description: 'Firebase Cloud Functions documentation for Luis IT Repair'
+---
+
+## Overview
+
+Cloud Functions for Firebase lets you run backend code in response to events triggered by Firebase features and HTTPS requests. This page documents all Cloud Functions deployed in the Luis IT Repair application.
+
+## Configuration
+
+Cloud Functions are configured in `firebase.json`:
+
+```json
+{
+  "functions": {
+    "source": "functions",
+    "predeploy": [
+      "npm --prefix \"$RESOURCE_DIR\" run build"
+    ]
+  }
+}
+```
+
+### Global Settings
+
+The functions use the following global configuration:
+
+```typescript
+import { setGlobalOptions } from "firebase-functions";
+import * as admin from "firebase-admin";
+
+setGlobalOptions({ maxInstances: 10 });
+admin.initializeApp();
+```
+
+**Purpose**: Limits concurrent function instances to 10 for cost control and prevents unexpected traffic spikes.
+
+<Note>
+The `maxInstances` limit helps control costs by preventing runaway scaling during traffic spikes. Individual functions can override this with their own `maxInstances` option.
+</Note>
+
+## Functions
+
+### mlSearch
+
+**Type**: HTTP Function  
+**Region**: `southamerica-east1`  
+**Access**: Public (no authentication required)  
+**Endpoint**: `/api/ml/search`
+
+#### Purpose
+
+Searches MercadoLibre (Mexico) for products and returns structured results. This function enables the application to display marketplace prices for repair parts and accessories.
+
+#### Function Definition
+
+```typescript
+export const mlSearch = onRequest(
+  {region: "southamerica-east1", invoker: "public"}, 
+  async (request, response) => {
+    // Implementation
+  }
+);
+```
+
+#### Request Parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `q` | string | Yes | Search query |
+| `limit` | string | No | Max results (default: 12) |
+| `debug` | string | No | Enable debug mode ("1" for true) |
+
+#### Example Request
+
+```bash
+curl "https://REGION-PROJECT_ID.cloudfunctions.net/mlSearch?q=iPhone%2013%20pantalla&limit=10"
+```
+
+#### Response Format
+
+```json
+{
+  "results": [
+    {
+      "id": "web-1",
+      "title": "Pantalla iPhone 13 Original",
+      "price": 2500.00,
+      "permalink": "https://...",
+      "condition": "-",
+      "sold_quantity": 150
+    }
+  ],
+  "diagnostics": {
+    // Only included if debug=1
+  }
+}
+```
+
+#### Search Strategy
+
+The function uses a multi-layered search strategy:
+
+1. **API Search**: Attempts official MercadoLibre API
+2. **Token Refresh**: Auto-refreshes OAuth token if expired
+3. **HTML Fallback**: Falls back to HTML scraping if API fails
+4. **Query Variants**: Tries multiple query variations
+
+##### Query Variants
+
+The function generates multiple search variants from the input:
+
+```typescript
+// Example: "iPhone 13 Pro pantalla original"
+// Generates variants:
+// - "iphone 13 pro pantalla original"
+// - "iphone pro pantalla original" (filtered)
+// - "iphone pro pantalla" (first 3 words)
+// etc.
+```
+
+#### Environment Variables
+
+The function uses optional environment variables for MercadoLibre API authentication:
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `MELI_ACCESS_TOKEN` | MercadoLibre access token | No |
+| `MELI_CLIENT_ID` | OAuth client ID | No* |
+| `MELI_CLIENT_SECRET` | OAuth client secret | No* |
+| `MELI_REFRESH_TOKEN` | OAuth refresh token | No* |
+
+<Warning>
+*Required for automatic token refresh. If not provided, the function falls back to HTML scraping.
+</Warning>
+
+#### Setting Environment Variables
+
+```bash
+# Set environment variables
+firebase functions:config:set \
+  meli.access_token="YOUR_TOKEN" \
+  meli.client_id="YOUR_CLIENT_ID" \
+  meli.client_secret="YOUR_SECRET" \
+  meli.refresh_token="YOUR_REFRESH_TOKEN"
+
+# Deploy with new config
+firebase deploy --only functions
+```
+
+#### CORS Configuration
+
+The function enables CORS for all origins:
+
+```typescript
+response.set("Access-Control-Allow-Origin", "*");
+response.set("Access-Control-Allow-Methods", "GET,OPTIONS");
+response.set("Access-Control-Allow-Headers", "Content-Type");
+```
+
+#### Error Handling
+
+The function handles various error scenarios:
+
+| Error | Status Code | Response |
+|-------|-------------|----------|
+| Missing `q` parameter | 400 | `{error: "Parametro q requerido."}` |
+| Network/API error | 502 | `{error: "No se pudo consultar..."}` |
+| No results found | 200 | `{results: [], detail: "Sin resultados..."}` |
+
+#### Debug Mode
+
+Enable debug mode to see diagnostic information:
+
+```bash
+curl "https://REGION-PROJECT_ID.cloudfunctions.net/mlSearch?q=iPhone&debug=1"
+```
+
+Debug response includes:
+- API request attempts and status codes
+- HTML scraping attempts and results
+- Token refresh attempts
+- Anti-bot detection hints
+
+#### Helper Functions
+
+The function includes several helper utilities:
+
+##### decodeHtmlEntities
+
+Decodes HTML entities in text:
+
+```typescript
+function decodeHtmlEntities(text: string): string {
+  return String(text || "")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+```
+
+##### stripHtml
+
+Removes HTML tags from text:
+
+```typescript
+function stripHtml(text: string): string {
+  return decodeHtmlEntities(
+    String(text || "").replace(/<[^>]*>/g, "")
+  ).trim();
+}
+```
+
+##### buildQueryVariants
+
+Generates search query variations:
+
+```typescript
+function buildQueryVariants(rawQuery: string): string[] {
+  // Generates up to 5 normalized query variants
+  // Filters out short tokens, numbers, and common words
+}
+```
+
+##### parseMlSearchHtml
+
+Extracts product data from MercadoLibre HTML:
+
+```typescript
+function parseMlSearchHtml(html: string) {
+  // Parses HTML using regex to extract:
+  // - Product titles
+  // - Prices
+  // - Permalinks
+  // - Sold quantities
+}
+```
+
+##### fetchMlApi
+
+Calls the official MercadoLibre API:
+
+```typescript
+async function fetchMlApi(
+  query: string,
+  limit: string,
+  accessToken?: string
+): Promise<{
+  results: Array<Record<string, unknown>>;
+  status: number;
+  errorDetail?: string;
+}>
+```
+
+##### refreshMlAccessToken
+
+Refreshes expired OAuth tokens:
+
+```typescript
+async function refreshMlAccessToken(
+  clientId: string,
+  clientSecret: string,
+  refreshToken: string
+): Promise<string | null>
+```
+
+##### fetchMlHtml
+
+Fetches and parses MercadoLibre HTML as a fallback:
+
+```typescript
+async function fetchMlHtml(
+  query: string, 
+  debug = false
+): Promise<{
+  results: Array<Record<string, unknown>>;
+  diagnostics?: Array<Record<string, unknown>>;
+}>
+```
+
+## Hosting Integration
+
+The function is integrated with Firebase Hosting via rewrites in `firebase.json`:
+
+```json
+{
+  "hosting": {
+    "rewrites": [
+      {
+        "source": "/api/ml/search",
+        "function": {
+          "functionId": "mlSearch",
+          "region": "southamerica-east1"
+        }
+      }
+    ]
+  }
+}
+```
+
+This allows the function to be accessed at:
+```
+https://your-domain.com/api/ml/search?q=search+query
+```
+
+## Deployment
+
+### Build and Deploy
+
+```bash
+# Build TypeScript functions
+cd functions
+npm run build
+
+# Deploy all functions
+firebase deploy --only functions
+
+# Deploy specific function
+firebase deploy --only functions:mlSearch
+```
+
+### View Logs
+
+```bash
+# View all function logs
+firebase functions:log
+
+# View specific function logs
+firebase functions:log --only mlSearch
+
+# Stream logs in real-time
+firebase functions:log --follow
+```
+
+## Cost Optimization
+
+### Instance Limits
+
+The global `maxInstances: 10` setting prevents runaway costs:
+
+```typescript
+setGlobalOptions({ maxInstances: 10 });
+```
+
+<Note>
+With 10 max instances, if traffic exceeds capacity, additional requests will queue or receive 429 errors instead of spawning more instances.
+</Note>
+
+### Region Selection
+
+`southamerica-east1` is selected for:
+- Lower latency for Mexican users
+- MercadoLibre API is region-specific (MLM = Mexico)
+- Reduced cross-region data transfer costs
+
+### Function Optimization Tips
+
+1. **Minimize cold starts**: Keep functions warm with scheduled pings
+2. **Reuse connections**: Use global variables for HTTP clients
+3. **Set timeouts**: Prevent long-running functions
+4. **Use caching**: Cache frequently requested data
+
+## Local Development
+
+### Firebase Emulator
+
+Run functions locally:
+
+```bash
+# Start emulator
+firebase emulators:start --only functions
+
+# Function will be available at:
+# http://localhost:5001/PROJECT_ID/southamerica-east1/mlSearch
+```
+
+### Environment Variables for Emulator
+
+Create `.runtimeconfig.json` in the `functions/` directory:
+
+```json
+{
+  "meli": {
+    "access_token": "YOUR_TOKEN",
+    "client_id": "YOUR_CLIENT_ID",
+    "client_secret": "YOUR_SECRET",
+    "refresh_token": "YOUR_REFRESH_TOKEN"
+  }
+}
+```
+
+<Warning>
+Do not commit `.runtimeconfig.json` to version control. Add it to `.gitignore`.
+</Warning>
+
+## Monitoring
+
+### Firebase Console
+
+1. Go to Firebase Console > Functions
+2. View metrics:
+   - Invocations per minute
+   - Execution time
+   - Error rate
+   - Memory usage
+
+### Cloud Logging
+
+The function uses structured logging:
+
+```typescript
+import * as logger from "firebase-functions/logger";
+
+logger.error("mlSearch error", error);
+```
+
+### Alerts
+
+Set up alerts in Firebase Console:
+- Error rate threshold
+- Execution time threshold
+- Instance count threshold
+
+## Troubleshooting
+
+### Function Not Responding
+
+1. Check deployment status: `firebase functions:list`
+2. Check logs: `firebase functions:log --only mlSearch`
+3. Verify region matches hosting rewrite configuration
+
+### API Rate Limits
+
+MercadoLibre may rate limit requests:
+- Use authenticated API calls when possible
+- Implement client-side caching
+- Consider adding Redis cache layer
+
+### HTML Scraping Failures
+
+MercadoLibre may detect automated requests:
+- Rotate user agents
+- Use authenticated API primarily
+- Add delays between requests
+- Check `antiBotHint` in debug diagnostics
+
+## Security Considerations
+
+1. **Public Access**: The function is public, so implement rate limiting
+2. **Input Validation**: Always validate and sanitize query parameters
+3. **Secrets Management**: Use Firebase Functions config for secrets
+4. **CORS**: Currently allows all origins; restrict if needed
+
+## Future Enhancements
+
+Potential improvements:
+
+- Add Redis caching for popular searches
+- Implement request rate limiting
+- Add support for other marketplaces
+- Implement webhook for real-time price updates
+- Add authentication for admin features

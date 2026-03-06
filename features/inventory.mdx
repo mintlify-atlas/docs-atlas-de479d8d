@@ -1,0 +1,502 @@
+---
+title: Inventory Management
+description: Product catalog with stock tracking, pricing, and barcode management
+icon: box
+---
+
+## Overview
+
+The Inventory Management module provides complete control over product catalog, stock levels, pricing, and profit margins. It integrates seamlessly with the POS system for automatic stock deduction.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Product Catalog" icon="list">
+    Manage products, parts, and services with detailed information and categorization
+  </Card>
+  <Card title="Barcode Integration" icon="barcode">
+    Assign and manage unique barcodes for quick scanning at point of sale
+  </Card>
+  <Card title="Stock Tracking" icon="warehouse">
+    Real-time inventory levels with minimum stock alerts
+  </Card>
+  <Card title="Profit Margins" icon="chart-line">
+    Automatic margin calculation between purchase and sale prices
+  </Card>
+  <Card title="Quick Lookup" icon="magnifying-glass">
+    "Modify by Code" feature for rapid product updates via barcode scanner
+  </Card>
+  <Card title="Active/Inactive" icon="toggle-on">
+    Control product visibility in POS without deleting records
+  </Card>
+</CardGroup>
+
+## Product Data Structure
+
+```typescript
+interface Producto {
+  id: string;
+  nombre: string;
+  codigo: string; // Barcode
+  categoria: string;
+  tipo: "producto" | "refaccion" | "servicio";
+  precioCompra: number;
+  precioVenta: number;
+  stock: number;
+  stockMinimo: number;
+  compatible: string; // Compatible devices
+  generaPuntos: boolean;
+  activo: boolean;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+```
+
+### Field Descriptions
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| nombre | Yes | Product name displayed in POS |
+| codigo | Yes | Unique barcode identifier |
+| categoria | No | Product category (e.g., "RAM", "Discos") |
+| tipo | Yes | Product type: product, part, or service |
+| precioCompra | No | Purchase cost (for margin calculation) |
+| precioVenta | Yes | Selling price |
+| stock | Yes | Current inventory quantity |
+| stockMinimo | No | Alert threshold for low stock |
+| compatible | No | Device compatibility notes |
+| generaPuntos | Yes | Whether purchase earns loyalty points |
+| activo | Yes | Product availability in POS |
+
+## Product List Interface
+
+The main inventory page shows all products in a comprehensive table:
+
+```jsx
+// Component: src/pages/productos.jsx
+const [productos, setProductos] = useState([]);
+
+useEffect(() => {
+  cargarProductos();
+}, []);
+
+const cargarProductos = async () => {
+  const data = await obtenerProductos();
+  setProductos(data);
+};
+```
+
+### Table Columns
+
+| Column | Displays |
+|--------|----------|
+| Producto | Product name |
+| Codigo | Barcode number |
+| Categoria | Product category |
+| Compra | Purchase price |
+| Venta | Sale price |
+| Margen | Calculated profit percentage |
+| Stock | Current inventory |
+| Estado | Active/Inactive badge |
+| Acciones | Edit and Delete buttons |
+
+## Creating Products
+
+### Standard Creation Flow
+
+1. Click "+ Nuevo Producto" button
+2. Fill in the product form:
+
+```jsx
+const productoVacio = {
+  nombre: "",
+  codigo: "",
+  categoria: "",
+  tipo: "producto",
+  precioCompra: "",
+  precioVenta: "",
+  stock: "",
+  stockMinimo: "",
+  compatible: "",
+  generaPuntos: true,
+  activo: true
+};
+```
+
+3. System validates required fields
+4. Duplicate code check is performed
+5. Product is saved to Firestore
+
+<Note>
+  The barcode field (codigo) must be unique across all products. The system will alert you if you try to use a duplicate code.
+</Note>
+
+### Product Form Fields
+
+<AccordionGroup>
+  <Accordion title="Basic Information">
+    - **Nombre**: Product display name
+    - **Codigo de barras**: Scannable barcode
+    - **Categoria**: Optional grouping (e.g., "Componentes", "Periféricos")
+  </Accordion>
+  
+  <Accordion title="Product Type">
+    Three options available:
+    - **Producto**: Finished goods for sale
+    - **Refaccion**: Repair parts/components
+    - **Servicio**: Service items (labor, diagnostics)
+  </Accordion>
+  
+  <Accordion title="Pricing">
+    - **Precio compra**: Your acquisition cost
+    - **Precio venta**: Customer price (required)
+    - Margin is auto-calculated on save
+  </Accordion>
+  
+  <Accordion title="Inventory">
+    - **Stock**: Current quantity on hand
+    - **Stock minimo**: Reorder point threshold
+    - System doesn't auto-reorder, but highlights low stock
+  </Accordion>
+  
+  <Accordion title="Additional">
+    - **Compatible con**: Free text for device compatibility
+    - Example: "Laptop HP 15-dy2xxx, Dell Inspiron 15"
+  </Accordion>
+</AccordionGroup>
+
+## Barcode-Based Editing
+
+The "Modificar por codigo" feature enables rapid updates:
+
+### Workflow
+
+1. Click "Modificar por codigo" button
+2. Modal appears with barcode input
+3. Scan or type barcode
+4. Press Enter or click "Buscar producto"
+5. System searches for matching product:
+
+```javascript
+const buscarProductoPorCodigo = () => {
+  const codigoNormalizado = normalizarCodigo(codigoBusqueda);
+  
+  if (!codigoNormalizado) {
+    setErrorCodigoBusqueda("Ingresa un codigo para buscar.");
+    return;
+  }
+
+  const producto = productos.find(
+    p => normalizarCodigo(p.codigo) === codigoNormalizado
+  );
+
+  if (!producto) {
+    setErrorCodigoBusqueda("No se encontro un producto con ese codigo.");
+    return;
+  }
+
+  editarProducto(producto);
+};
+```
+
+6. Product form opens pre-filled
+7. Make changes and save
+
+<Tip>
+  This feature is ideal for quickly updating prices or stock levels using a barcode scanner.
+</Tip>
+
+## Duplicate Code Prevention
+
+The system enforces unique barcodes:
+
+```javascript
+const normalizarCodigo = (value) => 
+  String(value ?? "").trim().toLowerCase();
+
+const existeCodigoRegistrado = (codigo, idActual = null) => {
+  const codigoNormalizado = normalizarCodigo(codigo);
+  if (!codigoNormalizado) return false;
+
+  return productos.some((p) => {
+    const mismoCodigo = normalizarCodigo(p.codigo) === codigoNormalizado;
+    const otroProducto = idActual ? p.id !== idActual : true;
+    return mismoCodigo && otroProducto;
+  });
+};
+
+const validarCodigoUnico = () => {
+  if (!form.codigo) return;
+
+  if (existeCodigoRegistrado(form.codigo, modoEdicion ? form.id : null)) {
+    alert("Ese codigo ya esta dado de alta.");
+  }
+};
+```
+
+Validation occurs:
+- On blur of the codigo field
+- Before saving (create or update)
+
+## Profit Margin Calculation
+
+Margins are automatically calculated and displayed:
+
+```javascript
+const calcularMargen = (compra, venta) => {
+  if (!compra || !venta) return 0;
+  return (((venta - compra) / compra) * 100).toFixed(1);
+};
+
+// Example:
+// precioCompra: 100
+// precioVenta: 150
+// Margen: ((150 - 100) / 100) * 100 = 50.0%
+```
+
+The margin column updates in real-time as you edit prices.
+
+## Stock Management
+
+### Manual Stock Updates
+
+```javascript
+const actualizarStock = async (productoId, nuevoStock) => {
+  await actualizarProducto(productoId, {
+    stock: nuevoStock,
+    updatedAt: serverTimestamp()
+  });
+};
+```
+
+### Automatic Stock Deduction (POS)
+
+When a sale is completed in POS:
+
+```javascript
+// In POS.jsx after successful payment
+for (const [productoId, cantidadVendida] of ventas.entries()) {
+  const stockActual = productos.get(productoId).stock;
+  const nuevoStock = Math.max(0, stockActual - cantidadVendida);
+  await descontarStock(productoId, nuevoStock);
+}
+```
+
+### Stock Validation in POS
+
+Before allowing a sale:
+
+```javascript
+const validarStock = (producto, cantidadRequerida) => {
+  if (cantidadRequerida > producto.stock) {
+    alert("No hay más stock disponible");
+    return false;
+  }
+  return true;
+};
+
+// Prevent adding to cart if insufficient stock
+if (existe.cantidad >= producto.stock) {
+  alert("No hay más stock disponible");
+  return;
+}
+```
+
+<Warning>
+  The POS system will block sales if combined cart items + service parts exceed available stock.
+</Warning>
+
+## Low Stock Monitoring
+
+Products with stock below `stockMinimo` should be visually highlighted:
+
+```javascript
+const productosBajoStock = productos.filter(
+  p => p.stock <= (p.stockMinimo || 0) && p.activo
+);
+```
+
+<Note>
+  While the current UI doesn't automatically display low stock alerts, you can implement a dashboard widget to show products needing reorder.
+</Note>
+
+## Product Types and Usage
+
+### Producto (Product)
+- Finished goods for direct sale
+- Examples: Keyboards, mice, cables
+- Generates loyalty points by default
+- Full stock tracking
+
+### Refaccion (Part)
+- Components used in repairs
+- Examples: RAM modules, hard drives, screens
+- Often added to service boletas (parts lists)
+- Stock deducted when service is paid
+
+### Servicio (Service)
+- Service catalog items
+- Examples: OS installation, virus removal
+- Typically doesn't affect physical inventory
+- Can be sold standalone in POS
+
+## Product Activation States
+
+### Active Products
+```javascript
+activo: true
+// - Visible in POS search
+// - Scannable at checkout
+// - Included in inventory reports
+```
+
+### Inactive Products
+```javascript
+activo: false
+// - Hidden from POS
+// - Retained in database for history
+// - Can be reactivated later
+```
+
+<Tip>
+  Use inactive status instead of deleting products to preserve sales history and data integrity.
+</Tip>
+
+## Editing Products
+
+### Edit Flow
+
+1. Click "Editar" button on product row
+2. Form opens with current values:
+
+```javascript
+const editarProducto = (producto) => {
+  setForm(producto);
+  setModoEdicion(true);
+  setMostrarModal(true);
+};
+```
+
+3. Modify fields
+4. Code uniqueness is validated (excluding current product)
+5. Save updates product in Firestore
+
+### Constraints
+
+- **Codigo**: Can be changed if new code is unique
+- **Stock**: Can be manually adjusted
+- **Prices**: No restrictions on changes
+- **History**: No audit trail in current implementation
+
+## Deleting Products
+
+```javascript
+const eliminarProducto = async (id) => {
+  if (!id) return;
+  if (!confirm("Estas seguro de eliminar este producto?")) return;
+
+  await eliminarProductoDB(id);
+  cargarProductos();
+};
+```
+
+<Warning>
+  Deleting products removes them permanently. Consider using inactive status instead to preserve historical data.
+</Warning>
+
+## Firebase Operations
+
+### Create Product
+
+```javascript
+export async function crearProducto(producto) {
+  const docRef = await addDoc(collection(db, "productos"), {
+    ...producto,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  });
+  return docRef.id;
+}
+```
+
+### Update Product
+
+```javascript
+export async function actualizarProducto(id, cambios) {
+  await updateDoc(doc(db, "productos", id), {
+    ...cambios,
+    updatedAt: serverTimestamp()
+  });
+}
+```
+
+### Load All Products
+
+```javascript
+export async function obtenerProductos() {
+  const snapshot = await getDocs(collection(db, "productos"));
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
+}
+```
+
+## Integration with Other Modules
+
+### POS Integration
+- Products loaded on POS mount
+- Real-time stock validation
+- Barcode scanning for quick lookup
+- Price display and cart addition
+
+### Service Boletas
+- Parts can be added to service boletas
+- Stock reserved when service marked "listo"
+- Stock deducted when service paid in POS
+
+### Reports
+- Sales by product
+- Profit margins by item
+- Stock movement history
+- Low stock alerts
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Barcode Standards" icon="barcode">
+    Use standard barcode formats (UPC, EAN) for products. For custom items, create a consistent internal numbering system.
+  </Card>
+  <Card title="Stock Audits" icon="clipboard-check">
+    Regularly verify physical stock matches system records. Update discrepancies immediately.
+  </Card>
+  <Card title="Pricing Strategy" icon="money-bill">
+    Set purchase prices to accurately calculate margins. Review margins regularly to ensure profitability.
+  </Card>
+  <Card title="Categories" icon="folder">
+    Establish consistent category names to simplify inventory organization and reporting.
+  </Card>
+</CardGroup>
+
+## Technical Implementation
+
+The inventory system uses:
+
+```javascript
+import { 
+  obtenerProductos,
+  crearProducto,
+  actualizarProducto,
+  eliminarProductoDB
+} from "../js/services/POS_firebase";
+```
+
+**Key Files:**
+- `src/pages/productos.jsx` - Main interface
+- `src/js/services/POS_firebase.js` - Data layer
+- `src/css/productos.css` - Styling
+
+**Firebase Collection:**
+- Collection: `productos`
+- Indexes: `codigo`, `activo`
+- Security: Write requires authentication

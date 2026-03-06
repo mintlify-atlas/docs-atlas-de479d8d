@@ -1,0 +1,389 @@
+---
+title: "POS (Point of Sale)"
+description: "Point of sale API for product management, sales processing, and customer loyalty points"
+---
+
+# POS API
+
+The `POS_firebase.js` module provides functions for managing products, processing sales, and handling customer loyalty points in the point of sale system.
+
+## Product Management
+
+### obtenerProductos
+
+Retrieves all products from the database.
+
+```javascript
+import { obtenerProductos } from './services/POS_firebase';
+
+const productos = await obtenerProductos();
+
+productos.forEach(producto => {
+  console.log(`${producto.nombre}: $${producto.precio}`);
+  console.log(`Stock: ${producto.stock}`);
+});
+```
+
+<ResponseField name="result" type="array">
+  Array of product objects, each containing `id` and all product data
+</ResponseField>
+
+---
+
+### crearProducto
+
+Creates a new product in the database.
+
+```javascript
+import { crearProducto } from './services/POS_firebase';
+
+await crearProducto({
+  nombre: 'Cable USB-C',
+  precio: 150,
+  stock: 50,
+  categoria: 'Accesorios',
+  descripcion: 'Cable USB-C 2m'
+});
+```
+
+<ParamField path="data" type="object" required>
+  Product information
+  
+  <Expandable title="properties">
+    <ParamField path="nombre" type="string" required>
+      Product name
+    </ParamField>
+    
+    <ParamField path="precio" type="number" required>
+      Product price
+    </ParamField>
+    
+    <ParamField path="stock" type="number" required>
+      Available stock quantity
+    </ParamField>
+    
+    <ParamField path="categoria" type="string">
+      Product category
+    </ParamField>
+    
+    <ParamField path="descripcion" type="string">
+      Product description
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Note:** The function automatically saves the document ID within the document itself for easier reference.
+
+---
+
+### actualizarProducto
+
+Updates an existing product.
+
+```javascript
+import { actualizarProducto } from './services/POS_firebase';
+
+await actualizarProducto('prod123', {
+  precio: 175,
+  stock: 45
+});
+```
+
+<ParamField path="id" type="string" required>
+  The product document ID
+</ParamField>
+
+<ParamField path="data" type="object" required>
+  Object containing fields to update (partial update supported)
+</ParamField>
+
+---
+
+### eliminarProductoDB
+
+Deletes a product from the database.
+
+```javascript
+import { eliminarProductoDB } from './services/POS_firebase';
+
+await eliminarProductoDB('prod123');
+```
+
+<ParamField path="id" type="string" required>
+  The product document ID to delete
+</ParamField>
+
+**Warning:** This permanently deletes the product. Consider marking products as inactive instead of deleting them.
+
+---
+
+## Customer Management
+
+### buscarClientePorTelefono
+
+Searches for a customer by phone number.
+
+```javascript
+import { buscarClientePorTelefono } from './services/POS_firebase';
+
+const cliente = await buscarClientePorTelefono('5551234567');
+
+if (cliente) {
+  console.log(`Cliente encontrado: ${cliente.nombre}`);
+  console.log(`Puntos: ${cliente.puntos || 0}`);
+} else {
+  console.log('Cliente no encontrado');
+}
+```
+
+<ParamField path="telefono" type="string" required>
+  Customer phone number (will be trimmed)
+</ParamField>
+
+<ResponseField name="result" type="object | null">
+  Customer object with `id` and all customer data, or `null` if not found
+</ResponseField>
+
+---
+
+### sumarPuntosCliente
+
+Adds loyalty points to a customer account.
+
+```javascript
+import { sumarPuntosCliente } from './services/POS_firebase';
+
+// Add 50 points to customer
+await sumarPuntosCliente('cliente123', 50);
+
+// Points can be negative to redeem
+await sumarPuntosCliente('cliente123', -100);
+```
+
+<ParamField path="clienteId" type="string" required>
+  The customer document ID
+</ParamField>
+
+<ParamField path="puntosNuevos" type="number" required>
+  Points to add (can be negative to subtract/redeem points)
+</ParamField>
+
+**Note:** If the customer doesn't have a `puntos` field, it initializes to 0 before adding.
+
+---
+
+## Sales Management
+
+### registrarVenta
+
+Records a new sale transaction.
+
+```javascript
+import { registrarVenta } from './services/POS_firebase';
+
+const ventaId = await registrarVenta({
+  clienteId: 'cliente123',
+  productos: [
+    { id: 'prod1', nombre: 'Cable USB-C', cantidad: 2, precio: 150 },
+    { id: 'prod2', nombre: 'Mouse', cantidad: 1, precio: 250 }
+  ],
+  total: 550,
+  metodoPago: 'efectivo',
+  puntosGanados: 55,
+  fecha: new Date(),
+  vendedor: 'Luis García'
+});
+
+console.log(`Venta registrada: ${ventaId}`);
+```
+
+<ParamField path="data" type="object" required>
+  Sale transaction data
+  
+  <Expandable title="properties">
+    <ParamField path="clienteId" type="string">
+      Customer document ID (optional for walk-in sales)
+    </ParamField>
+    
+    <ParamField path="productos" type="array" required>
+      Array of product objects in the sale
+    </ParamField>
+    
+    <ParamField path="total" type="number" required>
+      Total sale amount
+    </ParamField>
+    
+    <ParamField path="metodoPago" type="string">
+      Payment method (efectivo, tarjeta, transferencia, etc.)
+    </ParamField>
+    
+    <ParamField path="puntosGanados" type="number">
+      Loyalty points earned from this sale
+    </ParamField>
+    
+    <ParamField path="fecha" type="Date">
+      Sale timestamp
+    </ParamField>
+    
+    <ParamField path="vendedor" type="string">
+      Salesperson name
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ResponseField name="result" type="string">
+  The created sale document ID
+</ResponseField>
+
+---
+
+### descontarStock
+
+Deducts stock quantity from a product after a sale.
+
+```javascript
+import { descontarStock } from './services/POS_firebase';
+
+// Deduct 3 units from product
+await descontarStock('prod123', 47); // new stock level
+```
+
+<ParamField path="productoId" type="string" required>
+  The product document ID
+</ParamField>
+
+<ParamField path="nuevoStock" type="number" required>
+  The new stock quantity (not the amount to deduct, but the final stock level)
+</ParamField>
+
+**Important:** This function expects the final stock level, not the quantity to deduct. Calculate the new stock before calling:
+
+```javascript
+const producto = await obtenerProducto(id);
+const nuevoStock = producto.stock - cantidadVendida;
+await descontarStock(id, nuevoStock);
+```
+
+---
+
+## Complete Sale Flow Example
+
+```javascript
+import {
+  obtenerProductos,
+  buscarClientePorTelefono,
+  registrarVenta,
+  descontarStock,
+  sumarPuntosCliente
+} from './services/POS_firebase';
+
+async function procesarVenta(telefono, itemsVenta) {
+  // 1. Find or create customer
+  const cliente = await buscarClientePorTelefono(telefono);
+  
+  if (!cliente) {
+    throw new Error('Cliente no encontrado');
+  }
+  
+  // 2. Calculate totals
+  let total = 0;
+  const productos = [];
+  
+  for (const item of itemsVenta) {
+    const subtotal = item.precio * item.cantidad;
+    total += subtotal;
+    
+    productos.push({
+      id: item.id,
+      nombre: item.nombre,
+      cantidad: item.cantidad,
+      precio: item.precio,
+      subtotal
+    });
+  }
+  
+  // 3. Calculate loyalty points (10% of total)
+  const puntosGanados = Math.floor(total * 0.10);
+  
+  // 4. Register sale
+  const ventaId = await registrarVenta({
+    clienteId: cliente.id,
+    productos,
+    total,
+    metodoPago: 'efectivo',
+    puntosGanados,
+    fecha: new Date(),
+    vendedor: 'Luis García'
+  });
+  
+  // 5. Update stock for each product
+  for (const item of itemsVenta) {
+    const nuevoStock = item.stockActual - item.cantidad;
+    await descontarStock(item.id, nuevoStock);
+  }
+  
+  // 6. Add loyalty points
+  await sumarPuntosCliente(cliente.id, puntosGanados);
+  
+  return {
+    ventaId,
+    total,
+    puntosGanados,
+    puntosNuevos: (cliente.puntos || 0) + puntosGanados
+  };
+}
+```
+
+---
+
+## Data Structures
+
+### Product Document
+
+```javascript
+{
+  id: 'prod123',
+  nombre: 'Cable USB-C',
+  precio: 150,
+  stock: 50,
+  categoria: 'Accesorios',
+  descripcion: 'Cable USB-C 2m'
+}
+```
+
+### Sale Document
+
+```javascript
+{
+  id: 'venta123',
+  clienteId: 'cliente123',
+  productos: [
+    {
+      id: 'prod1',
+      nombre: 'Cable USB-C',
+      cantidad: 2,
+      precio: 150,
+      subtotal: 300
+    }
+  ],
+  total: 550,
+  metodoPago: 'efectivo',
+  puntosGanados: 55,
+  fecha: Timestamp,
+  vendedor: 'Luis García'
+}
+```
+
+### Customer Document (with points)
+
+```javascript
+{
+  id: 'cliente123',
+  nombre: 'Juan Pérez',
+  telefono: '5551234567',
+  direccion: 'Calle Principal 123',
+  puntos: 250,
+  createdAt: Timestamp,
+  updatedAt: Timestamp
+}
+```

@@ -1,0 +1,176 @@
+---
+title: Introduction
+description: Welcome to Luis IT Repair - A comprehensive IT repair shop management system built with React and Firebase
+---
+
+## What is Luis IT Repair?
+
+Luis IT Repair is a modern, full-featured IT repair shop management system designed to streamline operations for computer repair businesses. Built with React 19, Firebase, and Vite, it provides a complete solution for managing service orders, inventory, point-of-sale operations, and customer relationships.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Service Management" icon="wrench">
+    Track repair services from intake to delivery with customizable workflows, automated notifications, and digital service sheets
+  </Card>
+  <Card title="Point of Sale (POS)" icon="cash-register">
+    Integrated POS system for product sales, mobile barcode scanning, and synchronized inventory management
+  </Card>
+  <Card title="Customer Portal" icon="user">
+    Public status tracking portal where customers can check their repair progress using QR codes or folio numbers
+  </Card>
+  <Card title="Analytics & Reports" icon="chart-line">
+    Real-time dashboard with revenue tracking, service metrics, and customizable reports with PDF export
+  </Card>
+</CardGroup>
+
+## Who Should Use This?
+
+Luis IT Repair is perfect for:
+
+- **Small to medium IT repair shops** looking to digitize their operations
+- **Computer service centers** managing multiple device types (PCs, laptops, printers, monitors)
+- **Businesses** wanting a self-hosted solution with complete data control
+- **Teams** requiring role-based access control and employee management
+
+## Architecture Overview
+
+<Steps>
+  <Step title="Frontend Layer">
+    React 19 single-page application with React Router for navigation, Bootstrap 5 for UI components, and custom SCSS styling
+  </Step>
+  <Step title="Backend Services">
+    Firebase Authentication for secure login, Cloud Firestore for real-time database, Cloud Functions for serverless operations, and Firebase Hosting for deployment
+  </Step>
+  <Step title="Key Collections">
+    - `servicios` - Repair service orders
+    - `clientes` - Customer information
+    - `productos` - Product inventory
+    - `ventas` - Sales transactions
+    - `autorizados` - Authorized users with roles
+    - `cortes_caja` - Daily cash register reports
+  </Step>
+</Steps>
+
+### Technology Stack
+
+```json package.json
+{
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-router-dom": "^7.13.0",
+    "firebase": "^12.8.0",
+    "bootstrap": "^5.3.8",
+    "recharts": "^3.7.0",
+    "html5-qrcode": "^2.3.8",
+    "jspdf": "^4.0.0",
+    "exceljs": "^4.4.0"
+  }
+}
+```
+
+## Core Modules
+
+### Service Management
+
+The service workflow supports multiple device types with customized intake forms:
+
+- **PC/Laptop**: Track processor, RAM, storage, peripheral condition
+- **Printers**: Document print quality, ink/toner status
+- **Monitors**: Screen size, color accuracy, physical condition
+
+```jsx src/App.jsx
+<Route
+  path="/hoja_servicio"
+  element={
+    <PermissionRoute permission="servicios.crear">
+      <HojaServicio />
+    </PermissionRoute>
+  }
+/>
+<Route
+  path="/servicios/:folio"
+  element={
+    <PermissionRoute permission="servicios.ver">
+      <ServicioDetalle />
+    </PermissionRoute>
+  }
+/>
+```
+
+### Authentication & Authorization
+
+Role-based access control with Firebase Authentication:
+
+```javascript src/pages/login.jsx
+const userCredential = await signInWithEmailAndPassword(
+  auth,
+  email.trim(),
+  password
+);
+
+const user = userCredential.user;
+const docRef = doc(db, "autorizados", user.uid);
+const snap = await getDoc(docRef);
+
+if (!snap.exists()) {
+  await signOut(auth);
+  setError("Usuario no autorizado.");
+  return;
+}
+```
+
+### Real-time Dashboard
+
+The home dashboard provides live KPIs and service metrics:
+
+```jsx src/pages/home.jsx
+const [kpis, setKpis] = useState({
+  ingresosMes: 0,
+  activos: 0,
+  entregados: 0,
+  totalClientes: 0,
+});
+
+const kpiData = await obtenerKPIsDashboard();
+const pend = await obtenerServiciosPendientes();
+const avisos = await obtenerNotificacionesHome();
+```
+
+## Benefits
+
+<CardGroup cols={3}>
+  <Card title="Cloud-Based" icon="cloud">
+    Access from anywhere with automatic backups and real-time synchronization
+  </Card>
+  <Card title="Scalable" icon="arrows-up-down">
+    Firebase infrastructure scales automatically with your business growth
+  </Card>
+  <Card title="Secure" icon="shield">
+    Enterprise-grade security with Firebase Authentication and Firestore rules
+  </Card>
+  <Card title="Mobile-Friendly" icon="mobile">
+    Responsive design works on desktop, tablet, and mobile devices
+  </Card>
+  <Card title="Customizable" icon="sliders">
+    Configurable appearance, workflows, and business rules
+  </Card>
+  <Card title="Open Source" icon="code">
+    Full source code access for customization and integration
+  </Card>
+</CardGroup>
+
+<Note>
+  Luis IT Repair uses Firebase's free tier limits initially. As your business grows, you may need to upgrade to the Blaze (pay-as-you-go) plan for higher usage limits.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+    Get up and running in 15 minutes with our step-by-step guide
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    Detailed installation and deployment instructions
+  </Card>
+</CardGroup>

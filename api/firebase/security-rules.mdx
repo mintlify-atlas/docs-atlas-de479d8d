@@ -1,0 +1,291 @@
+---
+title: 'Firestore Security Rules'
+description: 'Security rules configuration for Luis IT Repair Firestore database'
+---
+
+## Overview
+
+Firestore security rules control access to your database collections. This page documents the security configuration for all collections in the Luis IT Repair application.
+
+## Rules Version
+
+The application uses Firestore Security Rules version 2:
+
+```javascript
+rules_version='2'
+```
+
+## Complete Security Rules
+
+Here are the complete security rules defined in `firestore.rules`:
+
+```javascript
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Allow authorized users to access autorizados collection
+    match /autorizados/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Public read for customer status lookup; writes remain authenticated
+    match /servicios/{document=**} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    
+    // Allow authorized users to access clientes collection
+    match /clientes/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Allow authorized users to access productos collection
+    match /productos/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Allow authorized users to access ventas collection
+    match /ventas/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Allow authorized users to access cortes_caja collection
+    match /cortes_caja/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Allow authorized users to access folios collection (lookup index)
+    match /folios/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Allow authorized users to access folio counters
+    match /contadores_folio/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    
+    // Allow authorized users to access egresos_diarios collection
+    match /egresos_diarios/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Allow authorized users to access empleados collection
+    match /empleados/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+
+    // POS mobile scans sync queue (mobile -> desktop POS by same user)
+    match /pos_mobile_scans/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
+```
+
+## Rule Breakdown
+
+### Authentication Check
+
+Most collections use the basic authentication check:
+
+```javascript
+allow read, write: if request.auth != null;
+```
+
+This rule:
+- ✅ Allows access to any authenticated user
+- ❌ Denies access to anonymous/unauthenticated users
+- Applies to both read and write operations
+
+### Public Read Access
+
+The `servicios` collection has a special rule:
+
+```javascript
+match /servicios/{document=**} {
+  allow read: if true;  // Public read access
+  allow write: if request.auth != null;  // Authenticated write only
+}
+```
+
+**Why public reads?**
+- Customers need to check their repair status without logging in
+- They can look up their service by folio number
+- Write operations (creating/updating services) still require authentication
+
+<Warning>
+The `servicios` collection is publicly readable. Avoid storing sensitive customer data in this collection, or implement field-level security if needed.
+</Warning>
+
+## Collection Security Matrix
+
+| Collection | Read Access | Write Access | Purpose |
+|-----------|-------------|--------------|----------|
+| `autorizados` | Authenticated | Authenticated | User authorization data |
+| `servicios` | **Public** | Authenticated | Repair service orders |
+| `clientes` | Authenticated | Authenticated | Customer information |
+| `productos` | Authenticated | Authenticated | Product inventory |
+| `ventas` | Authenticated | Authenticated | Sales transactions |
+| `cortes_caja` | Authenticated | Authenticated | Daily cash register closing |
+| `folios` | Authenticated | Authenticated | Service folio index |
+| `contadores_folio` | Authenticated | Authenticated | Folio counter generation |
+| `egresos_diarios` | Authenticated | Authenticated | Daily expenses |
+| `empleados` | Authenticated | Authenticated | Employee records |
+| `pos_mobile_scans` | Authenticated | Authenticated | Mobile POS sync queue |
+
+## Authentication Context
+
+The `request.auth` object provides information about the authenticated user:
+
+```javascript
+request.auth.uid      // User's unique ID
+request.auth.token    // Authentication token with custom claims
+```
+
+### Example: User-Specific Rules
+
+While not currently implemented, you could add user-specific rules:
+
+```javascript
+// Allow users to only read/write their own data
+match /user_data/{userId} {
+  allow read, write: if request.auth != null && request.auth.uid == userId;
+}
+
+// Allow only admin users (requires custom claims)
+match /admin_panel/{document=**} {
+  allow read, write: if request.auth != null && request.auth.token.admin == true;
+}
+```
+
+## Wildcard Syntax
+
+### Single Document Wildcard
+
+```javascript
+match /servicios/{servicioId} {
+  // Matches a single document
+}
+```
+
+### Recursive Wildcard
+
+```javascript
+match /servicios/{document=**} {
+  // Matches all documents and subcollections
+}
+```
+
+<Note>
+The `{document=**}` syntax matches all documents at any depth, including subcollections.
+</Note>
+
+## Testing Security Rules
+
+You can test security rules locally using the Firebase Emulator Suite:
+
+```bash
+# Start the Firestore emulator
+firebase emulators:start --only firestore
+
+# Run security rules tests
+firebase emulators:exec --only firestore "npm test"
+```
+
+## Best Practices
+
+### 1. Principle of Least Privilege
+
+Only grant the minimum access necessary:
+
+```javascript
+// ❌ Bad: Too permissive
+match /{document=**} {
+  allow read, write: if true;
+}
+
+// ✅ Good: Specific and restrictive
+match /servicios/{servicioId} {
+  allow read: if true;
+  allow write: if request.auth != null;
+}
+```
+
+### 2. Validate Data
+
+Add validation rules to ensure data integrity:
+
+```javascript
+match /servicios/{servicioId} {
+  allow write: if request.auth != null 
+    && request.resource.data.folio is string
+    && request.resource.data.folio.size() > 0;
+}
+```
+
+### 3. Avoid Sensitive Data in Public Collections
+
+Since `servicios` is publicly readable:
+- ✅ Store folio, status, basic device info
+- ❌ Avoid full addresses, detailed personal info
+- Consider moving sensitive data to a separate authenticated collection
+
+### 4. Use Field-Level Security
+
+For mixed access requirements:
+
+```javascript
+match /servicios/{servicioId} {
+  // Public can read status and folio
+  allow read: if true;
+  
+  // Only authenticated users can see financial data
+  allow get: if request.auth != null 
+    && resource.data.keys().hasAny(['precio', 'costo']);
+}
+```
+
+## Deployment
+
+### Deploy Security Rules
+
+```bash
+# Deploy only Firestore rules
+firebase deploy --only firestore:rules
+
+# Deploy rules and indexes together
+firebase deploy --only firestore
+```
+
+### View Current Rules
+
+View active rules in Firebase Console:
+1. Go to Firestore Database
+2. Click "Rules" tab
+3. View or edit current rules
+
+## Common Issues
+
+### Permission Denied
+
+If you get permission denied errors:
+
+1. **Check authentication**: Ensure `request.auth != null`
+2. **Check rule syntax**: Validate rules in Firebase Console
+3. **Check indexes**: Some queries require composite indexes
+4. **Check emulator**: Local rules may differ from production
+
+### Rule Simulation
+
+Test rules in Firebase Console:
+1. Go to Firestore Rules
+2. Click "Rules Playground"
+3. Select operation (read/write)
+4. Specify path and auth state
+5. Run simulation
+
+## Additional Resources
+
+- [Firestore Security Rules Documentation](https://firebase.google.com/docs/firestore/security/get-started)
+- [Security Rules Reference](https://firebase.google.com/docs/reference/rules)
+- [Common Security Rules Use Cases](https://firebase.google.com/docs/firestore/security/rules-examples)

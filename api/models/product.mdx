@@ -1,0 +1,223 @@
+---
+title: 'Product'
+description: 'Product/inventory item data model for POS and inventory management'
+icon: 'box'
+---
+
+## Overview
+
+The Product model represents inventory items in the Luis IT Repair system. Products can be physical goods, parts/refacciones, or billable services. The model includes pricing, stock tracking, and barcode support.
+
+## Firestore Collection
+
+**Collection Name:** `productos`
+
+## Core Fields
+
+<ResponseField name="id" type="string" required>
+  Product document ID. Stored redundantly in the document itself for convenience.
+</ResponseField>
+
+<ResponseField name="nombre" type="string" required>
+  Product name or description.
+</ResponseField>
+
+<ResponseField name="codigo" type="string" required>
+  Barcode or SKU for product identification. Must be unique across all products.
+  
+  **Note:** The system normalizes codes (trim + lowercase) for duplicate checking.
+</ResponseField>
+
+<ResponseField name="categoria" type="string">
+  Product category for organization and filtering (e.g., "Accesorios", "Cables", "Pantallas").
+</ResponseField>
+
+<ResponseField name="tipo" type="string" default="producto">
+  Product classification.
+  
+  **Possible values:**
+  - `producto` - Physical goods for sale
+  - `refaccion` - Parts/components for repairs
+  - `servicio` - Billable service items
+</ResponseField>
+
+## Pricing
+
+<ResponseField name="precioCompra" type="number">
+  Wholesale/purchase cost per unit. Used for margin calculation.
+</ResponseField>
+
+<ResponseField name="precioVenta" type="number" required>
+  Retail sale price per unit (before tax).
+</ResponseField>
+
+### Margin Calculation
+
+Profit margin is calculated as:
+
+```javascript
+margen = ((precioVenta - precioCompra) / precioCompra) * 100
+```
+
+**Example:** If `precioCompra = 100` and `precioVenta = 150`, margin = 50%
+
+## Inventory Management
+
+<ResponseField name="stock" type="number">
+  Current available quantity. Automatically decremented on sales.
+</ResponseField>
+
+<ResponseField name="stockMinimo" type="number">
+  Minimum stock threshold for low-inventory alerts.
+</ResponseField>
+
+## Additional Fields
+
+<ResponseField name="compatible" type="string">
+  Compatibility notes (e.g., "Compatible con iPhone 11/12/13").
+</ResponseField>
+
+<ResponseField name="generaPuntos" type="boolean" default={true}>
+  Whether this product generates loyalty points when purchased.
+  
+  **Typical Rule:** If true, customer earns 1 point per peso spent.
+</ResponseField>
+
+<ResponseField name="activo" type="boolean" default={true}>
+  Product availability status. Inactive products are hidden from POS but remain in inventory.
+</ResponseField>
+
+## Stock Adjustment Rules
+
+### Automatic Deduction
+
+Stock is automatically decremented when:
+
+1. **POS Sale** - Product sold directly through POS
+2. **Service Delivery** - Service with boleta (parts list) is marked as delivered
+
+### Boleta Integration
+
+When a service ticket includes parts (boleta), stock is reserved but not deducted until:
+
+- Service status changes to "entregado" (delivered)
+- Service is paid through POS
+- System sets `boletaStockAjustado: true` to prevent duplicate deductions
+
+## Example JSON
+
+```json
+{
+  "id": "prod_abc123",
+  "nombre": "Cable USB-C 1m",
+  "codigo": "7501234567890",
+  "categoria": "Cables",
+  "tipo": "producto",
+  "precioCompra": 25,
+  "precioVenta": 50,
+  "stock": 45,
+  "stockMinimo": 10,
+  "compatible": "USB 3.1, carga rápida",
+  "generaPuntos": true,
+  "activo": true
+}
+```
+
+## Example: Service Part
+
+```json
+{
+  "id": "prod_xyz789",
+  "nombre": "Pantalla LCD iPhone 12",
+  "codigo": "LCD-IP12-BLK",
+  "categoria": "Pantallas",
+  "tipo": "refaccion",
+  "precioCompra": 800,
+  "precioVenta": 1500,
+  "stock": 5,
+  "stockMinimo": 2,
+  "compatible": "iPhone 12 / 12 Pro",
+  "generaPuntos": false,
+  "activo": true
+}
+```
+
+## Related Functions
+
+### Product Management
+
+- `obtenerProductos()` - Fetch all products
+- `crearProducto()` - Create new product (auto-generates document ID)
+- `actualizarProducto()` - Update product details
+- `eliminarProductoDB()` - Delete product
+
+### POS Operations
+
+- `descontarStock()` - Manually adjust stock quantity
+- `buscarClientePorTelefono()` - Client lookup for loyalty points
+- `sumarPuntosCliente()` - Award points from purchase
+- `registrarVenta()` - Record sale transaction
+
+See [POS Firebase](/api/services/pos) for detailed function documentation.
+
+## Usage Example
+
+```javascript
+import { 
+  crearProducto, 
+  actualizarProducto,
+  descontarStock 
+} from './js/services/POS_firebase';
+
+// Create new product
+await crearProducto({
+  nombre: "Mouse inalámbrico",
+  codigo: "MS-WL-001",
+  categoria: "Accesorios",
+  tipo: "producto",
+  precioCompra: 80,
+  precioVenta: 150,
+  stock: 20,
+  stockMinimo: 5,
+  compatible: "Windows/Mac/Linux",
+  generaPuntos: true,
+  activo: true
+});
+
+// Update stock after sale
+const productoId = "prod_abc123";
+const stockActual = 45;
+const cantidadVendida = 3;
+await descontarStock(productoId, stockActual - cantidadVendida);
+
+// Deactivate discontinued product
+await actualizarProducto("prod_old123", { activo: false });
+```
+
+## Code Validation
+
+The system enforces unique barcode codes:
+
+```javascript
+// Normalized comparison (case-insensitive, trimmed)
+const existeCodigoRegistrado = (codigo, idActual = null) => {
+  const codigoNormalizado = codigo.trim().toLowerCase();
+  return productos.some((p) => {
+    const mismoCodigo = p.codigo.trim().toLowerCase() === codigoNormalizado;
+    const otroProducto = idActual ? p.id !== idActual : true;
+    return mismoCodigo && otroProducto;
+  });
+};
+```
+
+Attempting to create or update a product with an existing code will fail validation.
+
+## Low Stock Alerts
+
+Products with `stock <= stockMinimo` should trigger low-inventory alerts in the UI. Implement monitoring with:
+
+```javascript
+const productosStockBajo = productos.filter(
+  p => p.activo && p.stock <= p.stockMinimo
+);
+```

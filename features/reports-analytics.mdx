@@ -1,0 +1,660 @@
+---
+title: Reports & Analytics
+description: Comprehensive business intelligence with sales analytics, cash register management, and visual dashboards
+icon: chart-bar
+---
+
+## Overview
+
+The Reports & Analytics module provides complete business intelligence for Luis IT Repair, including sales dashboards, cash register control, expense tracking, and visual analytics with interactive charts.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Real-Time KPIs" icon="gauge-high">
+    Today's sales, ticket count, averages, units sold, and total IVA at a glance
+  </Card>
+  <Card title="Visual Analytics" icon="chart-line">
+    Interactive charts for sales trends, top products, payment methods, and profit margins
+  </Card>
+  <Card title="Cash Register" icon="cash-register">
+    Daily opening/closing with denomination counting, reconciliation, and PDF generation
+  </Card>
+  <Card title="Expense Tracking" icon="file-invoice-dollar">
+    Record withdrawals, expenses, and receipts with categorization and daily totals
+  </Card>
+  <Card title="Calendar View" icon="calendar">
+    Date-based filtering with interactive calendar and daily sales summaries
+  </Card>
+  <Card title="Closing History" icon="clock-rotate-left">
+    Complete history of cash register closings with cashier tracking and reconciliation reports
+  </Card>
+</CardGroup>
+
+## Dashboard KPIs
+
+The dashboard displays six key performance indicators:
+
+```javascript
+const kpis = useMemo(() => {
+  const total = ventasFiltradas.reduce((acc, v) => acc + Number(v.total || 0), 0);
+  const tickets = ventasFiltradas.length;
+  const promedio = tickets > 0 ? total / tickets : 0;
+
+  const hoyIni = startOfToday();
+  const hoyFin = endOfToday();
+  const ventasHoy = ventas.filter(v => {
+    const f = toDate(v.fecha);
+    return f && f >= hoyIni && f <= hoyFin;
+  });
+  const totalHoy = ventasHoy.reduce((acc, v) => acc + Number(v.total || 0), 0);
+
+  let unidades = 0;
+  ventasFiltradas.forEach(v => {
+    (v.productos || []).forEach(p => {
+      unidades += Number(p?.cantidad || 0);
+    });
+  });
+
+  const iva = ventasFiltradas.reduce((acc, v) => acc + Number(v.iva || 0), 0);
+  
+  return { total, tickets, promedio, totalHoy, unidades, iva };
+}, [ventas, ventasFiltradas]);
+```
+
+### KPI Cards
+
+| KPI | Calculation | Purpose |
+|-----|-------------|----------|
+| **Ventas hoy** | Sum of today's sales | Track daily performance |
+| **Total periodo** | Sum of filtered date range | Period-to-period comparison |
+| **Tickets** | Count of transactions | Volume indicator |
+| **Ticket promedio** | Total ÷ Tickets | Average transaction value |
+| **Unidades vendidas** | Sum of all item quantities | Inventory turnover |
+| **IVA total** | Sum of tax collected | Tax reporting |
+
+## Visual Analytics
+
+### Sales by Day (Line Chart)
+
+Shows daily sales trends over the last 30 days:
+
+```javascript
+const ventasPorDia = useMemo(() => {
+  const map = new Map();
+  ventasFiltradas.forEach(v => {
+    const f = toDate(v.fecha);
+    if (!f) return;
+    const key = ymd(f);
+    const curr = map.get(key) || 0;
+    map.set(key, curr + Number(v.total || 0));
+  });
+
+  return [...map.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .slice(-30)
+    .map(([fecha, total]) => ({ fecha, total: Number(total.toFixed(2)) }));
+}, [ventasFiltradas]);
+```
+
+```jsx
+<LineChart data={ventasPorDia}>
+  <CartesianGrid strokeDasharray="3 3" stroke={chartGridColor} />
+  <XAxis dataKey="fecha" tick={{ fill: chartTextColor }} />
+  <YAxis tick={{ fill: chartTextColor }} />
+  <Tooltip formatter={(v) => money(v)} />
+  <Legend />
+  <Line 
+    type="monotone" 
+    dataKey="total" 
+    stroke="#2563eb" 
+    strokeWidth={2} 
+  />
+</LineChart>
+```
+
+### Top Products (Bar Chart)
+
+Displays best-selling items by unit count:
+
+```javascript
+const topProductos = useMemo(() => {
+  const map = new Map();
+  ventasFiltradas.forEach(v => {
+    (v.productos || []).forEach(p => {
+      // Group services together
+      const esServicio = p?.tipo?.toLowerCase() === "servicio" || 
+        ["lap", "laptop", "computadora", "impresora", "reparación", "servicio"]
+          .some(s => String(p?.nombre || "").toLowerCase().includes(s));
+      
+      const nombre = esServicio ? `🔧 Servicios` : (p?.nombre || "Sin nombre");
+      const cantidad = Number(p?.cantidad || 0);
+      const importe = Number(p?.precioVenta || 0) * cantidad;
+      
+      const curr = map.get(nombre) || { cantidad: 0, importe: 0 };
+      map.set(nombre, {
+        cantidad: curr.cantidad + cantidad,
+        importe: curr.importe + importe
+      });
+    });
+  });
+
+  return [...map.entries()]
+    .map(([nombre, val]) => ({ nombre, ...val }))
+    .sort((a, b) => b.cantidad - a.cantidad)
+    .slice(0, 10);
+}, [ventasFiltradas]);
+```
+
+<Note>
+  Services are automatically grouped into a single "Servicios" category to prevent cluttering the chart with individual repair entries.
+</Note>
+
+### Payment Methods (Pie Chart)
+
+Visualizes payment type distribution:
+
+```javascript
+const metodosPago = useMemo(() => {
+  const resumen = { efectivo: 0, tarjeta: 0, transferencia: 0, otros: 0 };
+
+  ventasFiltradas.forEach(v => {
+    const detalle = v?.pagoDetalle || {};
+    const tipo = String(v?.tipoPago || "").toLowerCase();
+
+    resumen.efectivo += Number(
+      detalle.efectivo || (tipo === "efectivo" ? v.total : 0) || 0
+    );
+    resumen.tarjeta += Number(
+      detalle.tarjeta || (tipo === "tarjeta" ? v.total : 0) || 0
+    );
+    resumen.transferencia += Number(
+      detalle.transferencia || (tipo === "transferencia" ? v.total : 0) || 0
+    );
+
+    if (!["efectivo", "tarjeta", "transferencia"].includes(tipo)) {
+      resumen.otros += Number(v.total || 0);
+    }
+  });
+
+  return [
+    { name: "Efectivo", value: Number(resumen.efectivo.toFixed(2)) },
+    { name: "Tarjeta", value: Number(resumen.tarjeta.toFixed(2)) },
+    { name: "Transferencia", value: Number(resumen.transferencia.toFixed(2)) },
+    { name: "Otros", value: Number(resumen.otros.toFixed(2)) }
+  ].filter(x => x.value > 0);
+}, [ventasFiltradas]);
+```
+
+### Profit Margins (Bar Chart)
+
+Calculates estimated profit by product:
+
+```javascript
+const utilidadPorProducto = useMemo(() => {
+  const map = new Map();
+  ventasFiltradas.forEach(v => {
+    (v.productos || []).forEach(p => {
+      const nombre = p?.nombre || "Sin nombre";
+      const cantidad = Number(p?.cantidad || 0);
+      const venta = Number(p?.precioVenta || 0);
+      const compra = Number(p?.precioCompra || 0);
+      const utilidad = (venta - compra) * cantidad;
+      
+      const curr = map.get(nombre) || 0;
+      map.set(nombre, curr + utilidad);
+    });
+  });
+
+  return [...map.entries()]
+    .map(([nombre, utilidad]) => ({ nombre, utilidad: Number(utilidad.toFixed(2)) }))
+    .sort((a, b) => b.utilidad - a.utilidad)
+    .slice(0, 10);
+}, [ventasFiltradas]);
+```
+
+## Date Filtering
+
+### Filter Controls
+
+The report page includes flexible date filtering:
+
+```jsx
+<div className="reportes-buscador">
+  <input
+    type="date"
+    value={fechaDesde}
+    onChange={(e) => setFechaDesde(e.target.value)}
+  />
+  <input
+    type="date"
+    value={fechaHasta}
+    onChange={(e) => setFechaHasta(e.target.value)}
+  />
+  <input
+    placeholder="Buscar por ID, método o producto..."
+    value={filtroTexto}
+    onChange={(e) => setFiltroTexto(e.target.value)}
+  />
+</div>
+```
+
+### Calendar View
+
+An interactive calendar provides visual date selection:
+
+```jsx
+<Calendar
+  onChange={cambiarFecchaAlSeleccionarDia}
+  value={selectedDate}
+/>
+```
+
+Clicking a date:
+1. Sets both `fechaDesde` and `fechaHasta` to that day
+2. Filters all reports to show only that day's data
+3. Updates the side panel with daily summary
+
+<Tip>
+  The calendar can be pinned open using the "Fijar" button, and your preference is saved to localStorage.
+</Tip>
+
+## Cash Register Management
+
+### Daily Opening
+
+Before any sales can be processed, the cash register must be opened:
+
+```javascript
+const registrarAperturaCaja = async (fondoInicial, cajero) => {
+  const fechaKey = ymd(new Date());
+  
+  await setDoc(doc(db, "cortes_caja", fechaKey), {
+    fechaKey,
+    cerrado: false,
+    fondoInicialCaja: fondoInicial,
+    cajero: {
+      uid: cajero.uid,
+      email: cajero.email,
+      nombre: cajero.nombre
+    },
+    aperturaEn: serverTimestamp()
+  });
+};
+```
+
+The modal requires:
+- **Fondo inicial**: Starting cash in drawer
+- **Cashier info**: Automatically captured from auth
+
+### Daily Closing
+
+At end of day, click "Cerrar caja" to open the closing modal:
+
+#### Step 1: Denomination Counting
+
+```javascript
+const DENOMINACIONES = [
+  1000, 500, 200, 100, 50, 20, 10, 5, 2, 1, 0.5
+];
+
+const totalDenominaciones = useMemo(() => {
+  return DENOMINACIONES.reduce((acc, valor) => {
+    const cantidad = Number(denominaciones[String(valor)] || 0);
+    return acc + (valor * cantidad);
+  }, 0);
+}, [denominaciones]);
+```
+
+Count physical cash and enter quantities for each denomination.
+
+#### Step 2: Withdrawals and Expenses
+
+Record any cash removed from drawer:
+
+```javascript
+const agregarMovimiento = (tipo = "retiro") => {
+  setRetiros(prev => [
+    ...prev,
+    {
+      id: `r-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      tipo, // "retiro" | "gasto" | "vale"
+      monto: "",
+      motivo: "",
+      usuario: auth.currentUser?.email || ""
+    }
+  ]);
+};
+```
+
+**Withdrawal Types:**
+- **Retiro**: Cash taken out for bank deposit
+- **Gasto**: Business expense paid from drawer
+- **Vale**: Cash advance to employee
+
+#### Step 3: Expense Integration
+
+Expenses recorded via the Expenses modal are automatically included:
+
+```javascript
+const egresosValidos = useMemo(() => {
+  return egresos
+    .map(e => ({
+      id: String(e?.id || ""),
+      tipo: String(e?.tipo || "otro"),
+      monto: Number(String(e?.monto || "").replace(/,/g, "")),
+      descripcion: String(e?.descripcion || "").trim(),
+      usuario: String(e?.usuario || "").trim()
+    }))
+    .filter(e => Number.isFinite(e.monto) && e.monto > 0);
+}, [egresos]);
+```
+
+#### Step 4: Reconciliation
+
+The system calculates expected vs. actual cash:
+
+```javascript
+const efectivoEsperadoHoy = ventasHoy.reduce((acc, v) => {
+  const tipo = String(v?.tipoPago || "").toLowerCase();
+  const detalle = v?.pagoDetalle || {};
+  const efectivo = Number(
+    detalle.efectivo || (tipo === "efectivo" ? v.total : 0) || 0
+  );
+  return acc + efectivo;
+}, 0);
+
+const totalSalidasCaja = totalRetiros + totalEgresosDia;
+const cajaFinalEsperada = fondoInicialNum + efectivoEsperadoHoy - totalSalidasCaja;
+const diferenciaContado = totalDenominaciones - efectivoEsperadoHoy;
+```
+
+**Reconciliation Formula:**
+```
+Caja Final Esperada = Fondo Inicial + Efectivo de Ventas - Salidas
+Diferencia = Total Contado - Efectivo Esperado
+```
+
+<Warning>
+  A negative difference indicates a shortage (money missing). A positive difference indicates an overage (extra money).
+</Warning>
+
+#### Step 5: PDF Generation
+
+After confirmation:
+
+```javascript
+const res = await cerrarCajaHoy(ventas, {
+  efectivoContado: totalDenominaciones,
+  fondoInicialCaja: fondoInicialNum,
+  denominaciones: DENOMINACIONES.map(valor => ({
+    valor,
+    cantidad: Number(denominaciones[String(valor)] || 0)
+  })),
+  retiros: retirosValidos,
+  egresos: egresosValidos,
+  cajero: {
+    uid: auth.currentUser?.uid,
+    email: auth.currentUser?.email,
+    nombre: auth.currentUser?.displayName
+  },
+  notasCorte
+});
+
+await generarPdfCorteCajaDia(ventas, {
+  corte: res.corte,
+  fechaKey: res?.corte?.fechaKey || ymd(new Date())
+});
+```
+
+The PDF includes:
+- Sales summary (tickets, subtotal, IVA, total)
+- Payment method breakdown
+- Cash reconciliation
+- Denomination count
+- Withdrawals and expenses
+- Cashier signature section
+
+## Expense Tracking
+
+### Opening Expense Modal
+
+Click "📊 Egresos" button to manage daily expenses:
+
+```jsx
+<ModalEgresos
+  mostrar={mostrarModalEgresos}
+  onClose={() => setMostrarModalEgresos(false)}
+  egresos={egresos}
+  onAgregarEgreso={handleAgregarEgreso}
+  onEliminarEgreso={handleEliminarEgreso}
+  onEditarEgreso={handleEditarEgreso}
+  totalEgresos={totalEgresos}
+/>
+```
+
+### Expense Types
+
+```javascript
+const TIPO_EGRESO_META = {
+  factura: { label: "Factura", emoji: "🧾" },
+  boleta_venta: { label: "Boleta de venta", emoji: "🛒" },
+  nota_credito: { label: "Nota de credito", emoji: "➕" },
+  nota_debito: { label: "Nota de debito", emoji: "➖" },
+  otro: { label: "Otro", emoji: "📝" }
+};
+```
+
+### Recording Expenses
+
+```javascript
+const handleAgregarEgreso = async (egreso) => {
+  if (cajaCerradaHoy) {
+    alert("La caja de hoy ya está cerrada. No se pueden registrar egresos.");
+    return;
+  }
+  
+  await guardarEgreso({
+    ...egreso,
+    usuario: auth.currentUser?.email || "sin_usuario"
+  });
+  
+  await cargarEgresosDia();
+};
+```
+
+Each expense requires:
+- **Tipo**: Expense category
+- **Monto**: Amount
+- **Descripcion**: What was purchased
+- **Usuario**: Automatically captured
+
+### Expense-Cash Relationship
+
+Expenses reduce expected cash in drawer:
+
+```javascript
+const totalEgresosDia = egresosValidos.reduce(
+  (acc, e) => acc + Number(e.monto || 0), 
+  0
+);
+
+const totalSalidasCaja = totalRetiros + totalEgresosDia;
+```
+
+<Note>
+  Expenses are stored separately but included in cash register closing reconciliation.
+</Note>
+
+## Closing History
+
+View all historical closings with filters:
+
+```jsx
+<div className="historial-cortes-filtros">
+  <input
+    type="date"
+    value={fechaCorteDesde}
+    onChange={(e) => setFechaCorteDesde(e.target.value)}
+  />
+  <input
+    type="date"
+    value={fechaCorteHasta}
+    onChange={(e) => setFechaCorteHasta(e.target.value)}
+  />
+  <input
+    placeholder="Filtrar por cajero (email/nombre)"
+    value={filtroCajero}
+    onChange={(e) => setFiltroCajero(e.target.value)}
+  />
+</div>
+```
+
+### Closing Table
+
+| Column | Data |
+|--------|------|
+| Fecha | Date key (YYYY-MM-DD) |
+| Cajero | Email or name |
+| Tickets | Number of sales |
+| IVA | Total tax collected |
+| Efectivo esperado | Cash from sales |
+| Contado | Physically counted cash |
+| Diferencia | Shortage/overage |
+| Documento | Download PDF button |
+
+### Re-Download Closing PDFs
+
+```javascript
+const handleDescargarCorteHistorial = async (corte) => {
+  const key = String(corte?.fechaKey || "");
+  if (!key) return;
+  
+  const ventasDia = ventas.filter(v => {
+    const fecha = toDate(v.fecha);
+    return fecha && ymd(fecha) === key;
+  });
+  
+  await generarPdfCorteCajaDia(ventasDia, {
+    corte: corte || null,
+    fechaKey: key
+  });
+};
+```
+
+## Sales Detail Table
+
+A searchable, sortable table shows all transactions:
+
+```javascript
+const ventasFiltradas = useMemo(() => {
+  const desde = fechaDesde ? new Date(`${fechaDesde}T00:00:00`) : null;
+  const hasta = fechaHasta ? new Date(`${fechaHasta}T23:59:59`) : null;
+  const txt = filtroTexto.trim().toLowerCase();
+
+  return ventas.filter(v => {
+    const fecha = toDate(v.fecha);
+    if (!fecha) return false;
+    if (desde && fecha < desde) return false;
+    if (hasta && fecha > hasta) return false;
+
+    if (!txt) return true;
+    
+    const id = String(v.id || "").toLowerCase();
+    const tipo = String(v.tipoPago || "").toLowerCase();
+    const productos = (v.productos || [])
+      .map(p => String(p?.nombre || "").toLowerCase())
+      .join(" ");
+    
+    return id.includes(txt) || tipo.includes(txt) || productos.includes(txt);
+  });
+}, [ventas, fechaDesde, fechaHasta, filtroTexto]);
+```
+
+## Dark Mode Support
+
+All charts adapt to theme:
+
+```javascript
+const [isDarkMode, setIsDarkMode] = useState(
+  () => readAparienciaConfigStorage().themeMode === "oscuro"
+);
+
+const chartTextColor = isDarkMode ? "#cbd5e1" : "#475569";
+const chartGridColor = isDarkMode ? "#334155" : "#dbe3ef";
+const chartTooltipStyle = {
+  background: isDarkMode ? "#111827" : "#ffffff",
+  border: `1px solid ${chartGridColor}`,
+  color: isDarkMode ? "#e5e7eb" : "#0f172a",
+  borderRadius: 10
+};
+```
+
+## Animation Control
+
+Chart animations respect user preferences:
+
+```javascript
+const [animationsEnabled, setAnimationsEnabled] = useState(
+  () => readAparienciaConfigStorage().animations !== false
+);
+
+<Line
+  type="monotone"
+  dataKey="total"
+  stroke="#2563eb"
+  isAnimationActive={animationsEnabled}
+/>
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Daily Closing Routine">
+    1. Record all expenses throughout the day
+    2. Note any withdrawals made
+    3. Count cash carefully by denomination
+    4. Investigate significant discrepancies
+    5. Download and store closing PDF
+  </Accordion>
+  
+  <Accordion title="Report Review Frequency">
+    - **Daily**: Sales totals, cash reconciliation
+    - **Weekly**: Top products, payment trends
+    - **Monthly**: Profit margins, expense patterns
+    - **Quarterly**: Year-over-year comparisons
+  </Accordion>
+  
+  <Accordion title="Data Accuracy">
+    - Verify IVA configuration matches tax requirements
+    - Ensure all products have purchase prices for margin calculation
+    - Train staff on proper expense categorization
+    - Audit cash counts with two-person verification
+  </Accordion>
+</AccordionGroup>
+
+## Technical Implementation
+
+The reports module uses:
+
+```javascript
+import { Bar, BarChart, Line, LineChart, Pie, PieChart, 
+  ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import Calendar from "react-calendar";
+import { collection, getDocs } from "firebase/firestore";
+import { generarPdfCorteCajaDia } from "../js/services/pdf_corte_caja";
+import { cerrarCajaHoy, obtenerCorteCajaDia, listarCortesCaja } 
+  from "../js/services/corte_caja_firestore";
+import { guardarEgreso, obtenerEgresosDia, eliminarEgreso, actualizarEgreso } 
+  from "../js/services/egresos_firestore";
+```
+
+**Key Files:**
+- `src/pages/reportes.jsx` - Main dashboard (1134 lines)
+- `src/js/services/pdf_corte_caja.js` - PDF generation
+- `src/css/reportes.css` - Comprehensive styling
+
+**Firebase Collections:**
+- `ventas` - Sales transactions
+- `cortes_caja` - Daily closings
+- `egresos_[YYYY-MM-DD]` - Daily expenses

@@ -1,97 +1,115 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Welcome to Luis IT Repair"
+description: "Complete IT repair shop management system with service tracking, POS, inventory, and customer management"
 ---
 
-## Setting up
+<div className="mb-8">
+  <h1 className="text-5xl font-bold mb-4" style={{color: '#f1d262'}}>
+    Luis IT Repair
+  </h1>
+  <p className="text-xl text-gray-600 dark:text-gray-400">
+    Streamline your IT repair business with comprehensive service ticket management, point of sale, and customer relationship tools.
+  </p>
+</div>
 
-Get your documentation site up and running in minutes.
+## Core Features
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+Everything you need to run a modern IT repair shop.
 
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
+<CardGroup cols={2}>
   <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
+    title="Service Management"
+    icon="wrench"
+    href="/features/service-management"
   >
-    Edit your docs locally and preview them in real time.
+    Create and track service tickets with real-time status updates
   </Card>
   <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
+    title="Point of Sale"
+    icon="cash-register"
+    href="/features/point-of-sale"
   >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+    Process sales with multiple payment methods and inventory integration
   </Card>
   <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
+    title="Client Management"
+    icon="users"
+    href="/features/client-management"
   >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
-
-## Create beautiful pages
-
-Everything you need to create world-class documentation.
-
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
+    Build customer relationships with loyalty points and service history
   </Card>
   <Card
-    title="Code samples"
+    title="Inventory Control"
+    icon="boxes-stacked"
+    href="/features/inventory"
+  >
+    Manage products with stock tracking and automatic deductions
+  </Card>
+  <Card
+    title="Reports & Analytics"
+    icon="chart-line"
+    href="/features/reports-analytics"
+  >
+    Generate insights with revenue charts and performance metrics
+  </Card>
+  <Card
+    title="Employee Management"
+    icon="user-shield"
+    href="/features/employee-management"
+  >
+    Control access with role-based permissions and activity tracking
+  </Card>
+</CardGroup>
+
+## Get Started
+
+<CardGroup cols={2}>
+  <Card
+    title="Quickstart Guide"
+    icon="rocket"
+    href="/quickstart"
+  >
+    Get up and running in under 10 minutes
+  </Card>
+  <Card
+    title="Installation"
+    icon="download"
+    href="/installation"
+  >
+    Deploy to Firebase and configure your environment
+  </Card>
+  <Card
+    title="Creating Service Tickets"
+    icon="ticket"
+    href="/guides/creating-service-tickets"
+  >
+    Learn how to create and manage service tickets
+  </Card>
+  <Card
+    title="API Reference"
     icon="code"
-    href="/essentials/code"
+    href="/api/services/servicios"
   >
-    Add sample code to demonstrate how to use your product.
+    Explore the complete API documentation
   </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+</CardGroup>
 
-## Need inspiration?
+## Key Capabilities
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<AccordionGroup>
+  <Accordion title="Service Ticket Tracking" icon="clipboard-list">
+    Track repairs from intake to delivery with customizable status workflows, automatic folio generation, and customer notifications. Generate PDF service tickets and QR codes for easy status lookup.
+  </Accordion>
+  
+  <Accordion title="Multi-Payment POS System" icon="credit-card">
+    Accept cash, card, and transfer payments with real-time stock updates. Support for mobile barcode scanning, price comparison with online marketplaces, and automatic invoice generation.
+  </Accordion>
+  
+  <Accordion title="Customer Loyalty Program" icon="gift">
+    Reward repeat customers with points on every purchase. Track client history, manage contact information, and view complete service and purchase records.
+  </Accordion>
+  
+  <Accordion title="Cash Register Operations" icon="money-bill">
+    Manage daily cash flow with opening balances, expense tracking, and end-of-day reports. Generate detailed PDF summaries for accounting and audit purposes.
+  </Accordion>
+</AccordionGroup>

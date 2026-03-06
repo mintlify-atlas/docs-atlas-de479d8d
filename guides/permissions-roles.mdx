@@ -1,0 +1,472 @@
+---
+title: Permissions & Roles
+description: Understanding the role-based access control system and permission management in Luis IT Repair
+---
+
+## Overview
+
+Luis IT Repair uses a role-based permission system to control access to different features and workflows. Each user is assigned a role, and each role has specific permissions that determine what actions they can perform.
+
+## Role Hierarchy
+
+The system includes three predefined roles:
+
+```javascript
+const ROLES = {
+  Administrador: "Full system access",
+  Tecnico: "Service and client management",
+  Cajero: "Sales and inventory management"
+};
+```
+
+## Permission Catalog
+
+All available permissions are defined in a central catalog:
+
+```javascript
+export const PERMISOS_CATALOGO = [
+  {
+    key: "servicios.crear",
+    label: "Dar de alta servicios",
+    description: "Permite abrir y usar la pantalla de hoja de servicio."
+  },
+  {
+    key: "servicios.ver",
+    label: "Ver servicios",
+    description: "Permite acceder al listado y detalle de servicios."
+  },
+  {
+    key: "clientes.ver",
+    label: "Ver clientes",
+    description: "Permite entrar a clientes y su detalle."
+  },
+  {
+    key: "ventas.pos",
+    label: "Usar POS",
+    description: "Permite entrar a Punto de Venta y cobrar."
+  },
+  {
+    key: "productos.ver",
+    label: "Ver productos",
+    description: "Permite abrir y gestionar productos."
+  },
+  {
+    key: "reportes.ver",
+    label: "Ver reportes",
+    description: "Permite acceder al apartado de reportes."
+  },
+  {
+    key: "configuracion.ver",
+    label: "Entrar a configuracion",
+    description: "Permite entrar al modulo de configuracion."
+  },
+  {
+    key: "empleados.gestionar",
+    label: "Gestionar empleados",
+    description: "Permite crear, editar y eliminar empleados."
+  }
+];
+```
+
+See: `src/js/services/permisos.js:2-43`
+
+## Default Role Permissions
+
+### Administrador
+
+Full access to all system features:
+
+```javascript
+Administrador: {
+  "servicios.crear": true,
+  "servicios.ver": true,
+  "clientes.ver": true,
+  "ventas.pos": true,
+  "productos.ver": true,
+  "reportes.ver": true,
+  "configuracion.ver": true,
+  "empleados.gestionar": true
+}
+```
+
+<Card title="Administrador Role" icon="crown">
+  - Create and manage service tickets
+  - View all services and clients
+  - Access POS for sales
+  - Manage product inventory
+  - View all reports
+  - Configure system settings
+  - Manage employee accounts and permissions
+</Card>
+
+### Técnico (Technician)
+
+Focused on service and repair workflows:
+
+```javascript
+Tecnico: {
+  "servicios.crear": true,
+  "servicios.ver": true,
+  "clientes.ver": true,
+  "ventas.pos": false,
+  "productos.ver": false,
+  "reportes.ver": false,
+  "configuracion.ver": false,
+  "empleados.gestionar": false
+}
+```
+
+<Card title="Técnico Role" icon="wrench">
+  - Create service tickets (Hoja de Servicio)
+  - View and update service status
+  - View client information
+  - **Cannot** access POS or process sales
+  - **Cannot** view inventory or reports
+  - **Cannot** modify system configuration
+</Card>
+
+<Note>
+Technicians can see client data to create services but cannot manage the client records directly or access sales features.
+</Note>
+
+### Cajero (Cashier)
+
+Focused on sales and inventory:
+
+```javascript
+Cajero: {
+  "servicios.crear": false,
+  "servicios.ver": false,
+  "clientes.ver": true,
+  "ventas.pos": true,
+  "productos.ver": true,
+  "reportes.ver": true,
+  "configuracion.ver": false,
+  "empleados.gestionar": false
+}
+```
+
+<Card title="Cajero Role" icon="cash-register">
+  - Process sales in POS
+  - Manage product inventory
+  - View sales reports
+  - Lookup client information for sales
+  - **Cannot** create service tickets
+  - **Cannot** view service details
+  - **Cannot** modify system configuration
+</Card>
+
+<Warning>
+Cashiers can charge for completed services in POS but cannot view service details or create new service tickets.
+</Warning>
+
+## Permission Checking
+
+The system provides utility functions for permission validation:
+
+### Basic Permission Check
+
+```javascript
+export function tienePermiso(rol = "", permisos = {}, key = "") {
+  // Administrators always have access
+  if (normalizarRol(rol) === "Administrador") return true;
+  
+  // Check normalized permissions
+  const normalized = normalizarPermisos(rol, permisos);
+  return bool(normalized[key]);
+}
+```
+
+**Usage:**
+```javascript
+if (tienePermiso(userRole, userPermisos, "servicios.crear")) {
+  // Show "Create Service" button
+}
+```
+
+### Role Normalization
+
+Handles text variations and accents:
+
+```javascript
+function normalizarRol(raw = "") {
+  const key = String(raw || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")  // Remove accents
+    .trim();
+  
+  if (key === "administrador") return "Administrador";
+  if (key === "tecnico") return "Tecnico";  // Works with or without accent
+  if (key === "cajero") return "Cajero";
+  return "";
+}
+```
+
+This ensures "Técnico" and "Tecnico" are treated identically.
+
+See: `src/js/services/permisos.js:86-97`
+
+## Route Protection
+
+Routes are protected using the `PermissionRoute` component:
+
+```javascript
+import PermissionRoute from "../components/PermissionRoute";
+
+<Route
+  path="/hoja-servicio"
+  element={
+    <PermissionRoute 
+      permission="servicios.crear" 
+      fallbackPath="/home"
+    >
+      <HojaServicio />
+    </PermissionRoute>
+  }
+/>
+```
+
+**Component Implementation:**
+```javascript
+export default function PermissionRoute({
+  permission = "",
+  fallbackPath = "/home",
+  children
+}) {
+  const { loading, activo, puede } = useAutorizacionActual();
+  
+  if (loading) return <div>Cargando...</div>;
+  if (!activo) return <Navigate to="/login" replace />;
+  if (permission && !puede(permission)) {
+    return <Navigate to={fallbackPath} replace />;
+  }
+  
+  return children;
+}
+```
+
+See: `src/components/PermissionRoute.jsx`
+
+**Flow:**
+1. Check if user authorization is still loading
+2. Redirect to login if user is not active
+3. Check if user has required permission
+4. Redirect to fallback path if permission denied
+5. Render protected content if authorized
+
+## User Authorization Hook
+
+The `useAutorizacionActual` hook provides current user's permissions:
+
+```javascript
+const { loading, activo, puede, autorizacion } = useAutorizacionActual();
+
+// Check specific permission
+if (puede("ventas.pos")) {
+  // Show POS menu item
+}
+```
+
+**Hook provides:**
+- `loading`: Boolean indicating if auth is still loading
+- `activo`: Boolean if user account is active
+- `puede(permission)`: Function to check specific permission
+- `autorizacion`: Full authorization object with role and permissions
+
+See: `src/hooks/useAutorizacionActual.js`
+
+## Custom Permission Overrides
+
+Administrators can customize permissions per user:
+
+```javascript
+export function normalizarPermisos(rol = "", raw = {}) {
+  const base = permisosBasePorRol(rol);  // Get role defaults
+  const result = { ...base };
+  
+  // Apply custom overrides
+  PERMISOS_CATALOGO.forEach((p) => {
+    if (Object.prototype.hasOwnProperty.call(raw || {}, p.key)) {
+      result[p.key] = bool(raw[p.key]);
+    }
+  });
+  
+  return result;
+}
+```
+
+**Example: Custom Technician with POS Access**
+```javascript
+{
+  uid: "user-123",
+  rol: "Tecnico",
+  permisos: {
+    "ventas.pos": true  // Override: this technician can use POS
+  }
+}
+```
+
+The normalized permissions will merge:
+- Base "Tecnico" permissions
+- Plus the custom `ventas.pos: true` override
+
+## Permission-Based UI Rendering
+
+```javascript
+import { useAutorizacionActual } from "../hooks/useAutorizacionActual";
+
+function Navigation() {
+  const { puede } = useAutorizacionActual();
+  
+  return (
+    <nav>
+      {puede("servicios.crear") && (
+        <NavLink to="/hoja-servicio">Nuevo Servicio</NavLink>
+      )}
+      
+      {puede("servicios.ver") && (
+        <NavLink to="/servicios">Ver Servicios</NavLink>
+      )}
+      
+      {puede("ventas.pos") && (
+        <NavLink to="/pos">Punto de Venta</NavLink>
+      )}
+      
+      {puede("reportes.ver") && (
+        <NavLink to="/reportes">Reportes</NavLink>
+      )}
+      
+      {puede("configuracion.ver") && (
+        <NavLink to="/configuracion">Configuración</NavLink>
+      )}
+    </nav>
+  );
+}
+```
+
+## Common Permission Scenarios
+
+### Scenario 1: Technician Needs POS Access
+
+<Steps>
+1. Administrator opens employee management
+2. Edits the technician's user record
+3. Toggles custom permission: `ventas.pos: true`
+4. Saves changes
+5. Technician can now access POS while keeping service creation access
+</Steps>
+
+### Scenario 2: Cashier Needs Service View
+
+<Steps>
+1. Edit cashier user record
+2. Enable custom permission: `servicios.ver: true`
+3. Cashier can now view service details when processing payments
+4. Still cannot create new service tickets
+</Steps>
+
+### Scenario 3: Limited Administrator
+
+<Steps>
+1. Create user with "Administrador" role
+2. Add custom restriction: `empleados.gestionar: false`
+3. User has full access except employee management
+4. Useful for trusted senior staff without HR access
+</Steps>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Principle of Least Privilege" icon="lock">
+    Grant only the permissions necessary for each user's job function.
+  </Card>
+  
+  <Card title="Review Regularly" icon="rotate">
+    Periodically audit user permissions, especially after role changes.
+  </Card>
+  
+  <Card title="Document Overrides" icon="file-lines">
+    Keep notes on why custom permissions were granted to specific users.
+  </Card>
+  
+  <Card title="Test Permission Changes" icon="flask">
+    After modifying permissions, have the user test all affected features.
+  </Card>
+</CardGroup>
+
+## Administrator Bypass
+
+<Warning>
+Users with "Administrador" role ALWAYS have all permissions, regardless of custom overrides. The permission check short-circuits:
+
+```javascript
+if (normalizarRol(rol) === "Administrador") return true;
+```
+
+You cannot restrict administrator access through the permission system.
+</Warning>
+
+## Security Considerations
+
+### Client-Side vs Server-Side
+
+<Note>
+The permission checks shown here are **client-side** (UI hiding). For true security, implement matching **server-side** validation in Firebase Security Rules or Cloud Functions.
+</Note>
+
+**Example Firebase Security Rule:**
+```javascript
+match /servicios/{servicioId} {
+  allow create: if request.auth != null 
+    && get(/databases/$(database)/documents/empleados/$(request.auth.uid))
+       .data.permisos["servicios.crear"] == true;
+}
+```
+
+### Permission Validation in API
+
+For Cloud Functions:
+
+```javascript
+const { rol, permisos } = await getEmpleadoData(context.auth.uid);
+
+if (!tienePermiso(rol, permisos, "ventas.pos")) {
+  throw new functions.https.HttpsError(
+    'permission-denied',
+    'No tienes permiso para procesar ventas'
+  );
+}
+```
+
+## Troubleshooting
+
+**User can't access a feature they should have access to?**
+- Verify their role is spelled correctly (case-sensitive)
+- Check for custom permission overrides blocking access
+- Ensure user account is `activo: true`
+- Have user log out and log back in to refresh permissions
+- Check browser console for PermissionRoute redirect logs
+
+**Administrador can't access employee management?**
+- Should never happen with default role
+- Check if custom override `empleados.gestionar: false` exists
+- Remember: admin role bypasses most checks, but UI may respect overrides
+
+**Permission changes not taking effect?**
+- User needs to refresh their session
+- Clear browser localStorage
+- Check if autorizacion hook is using cached data
+- Verify Firestore empleados collection was updated
+
+**Navigation shows links but routes redirect?**
+- UI check (`puede()`) and route protection may use different data sources
+- Ensure both useAutorizacionActual and PermissionRoute are consistent
+- Check for race conditions in loading states
+
+## Related Workflows
+
+- [Creating Service Tickets](/guides/creating-service-tickets) - Requires `servicios.crear`
+- [Processing Sales](/guides/processing-sales) - Requires `ventas.pos`
+- [Managing Clients](/guides/managing-clients) - Requires `clientes.ver`
+- [Tracking Inventory](/guides/tracking-inventory) - Requires `productos.ver`

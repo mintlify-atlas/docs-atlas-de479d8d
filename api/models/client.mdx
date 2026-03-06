@@ -1,0 +1,165 @@
+---
+title: 'Client'
+description: 'Client/customer data model with fuzzy search capabilities'
+icon: 'user'
+---
+
+## Overview
+
+The Client model represents customers in the Luis IT Repair system. It includes normalized fields for efficient fuzzy searching and can link to multiple service tickets.
+
+## Firestore Collection
+
+**Collection Name:** `clientes`
+
+## Core Fields
+
+<ResponseField name="nombre" type="string" required>
+  Customer's full name as entered.
+</ResponseField>
+
+<ResponseField name="telefono" type="string" required>
+  Customer's phone number. Used as a primary lookup key.
+</ResponseField>
+
+<ResponseField name="direccion" type="string">
+  Customer's address for contact or delivery purposes.
+</ResponseField>
+
+## Serial Number Preferences
+
+<ResponseField name="numeroSeriePreferido" type="string">
+  Customer's preferred device serial number. Automatically cleared if `omitirNumeroSerie` is true.
+</ResponseField>
+
+<ResponseField name="omitirNumeroSerie" type="boolean" default={false}>
+  Flag indicating that the customer prefers not to provide serial numbers.
+</ResponseField>
+
+## Loyalty Program
+
+<ResponseField name="puntos" type="number" default={0}>
+  Customer loyalty points balance. Earned from purchases and can be redeemed for discounts.
+  
+  **Earning Rate:** Typically 1 point per peso spent on qualifying products.
+  
+  **Redemption:** Points can be used as currency (1 point = 1 peso discount) at checkout.
+</ResponseField>
+
+## Search Optimization Fields
+
+These fields are automatically generated and maintained by the system for efficient fuzzy search.
+
+<ResponseField name="nombreNorm" type="string">
+  Normalized version of `nombre` for search indexing.
+  
+  **Normalization:**
+  - Converts to lowercase
+  - Removes accents/diacritics
+  - Removes special characters
+  - Collapses multiple spaces to single space
+  - Separates camelCase words
+  
+  **Example:** "José María" → `"jose maria"`
+</ResponseField>
+
+<ResponseField name="nombreCompact" type="string">
+  Ultra-normalized version with all spaces removed for tight matching.
+  
+  **Example:** "José María" → `"josemaria"`
+</ResponseField>
+
+## Timestamps
+
+<ResponseField name="createdAt" type="timestamp" required>
+  Client record creation timestamp. Set automatically by Firestore.
+</ResponseField>
+
+<ResponseField name="updatedAt" type="timestamp" required>
+  Last update timestamp. Updated automatically on every change.
+</ResponseField>
+
+## Search Algorithm
+
+The client search uses a two-phase approach:
+
+1. **Prefix Search:** Query Firestore using `nombreNorm` with range query (`startAt`, `endAt`)
+2. **Levenshtein Ranking:** Calculate edit distance on `nombreCompact` and sort by similarity
+
+This enables fast fuzzy matching even with typos or incomplete names.
+
+## Example JSON
+
+```json
+{
+  "id": "client_xyz789",
+  "nombre": "María González López",
+  "telefono": "5551234567",
+  "direccion": "Calle Principal 456, Col. Centro",
+  "numeroSeriePreferido": "",
+  "omitirNumeroSerie": true,
+  "puntos": 150,
+  "nombreNorm": "maria gonzalez lopez",
+  "nombreCompact": "mariagonzalezlopez",
+  "createdAt": { "_seconds": 1678800000, "_nanoseconds": 0 },
+  "updatedAt": { "_seconds": 1678901234, "_nanoseconds": 567000000 }
+}
+```
+
+## Related Functions
+
+### Client Management
+
+- `crearCliente()` - Create new client with automatic normalization
+- `actualizarCliente()` - Update client data (re-normalizes name fields)
+- `obtenerClientePorId()` - Fetch client by document ID
+- `listarClientes()` - List recent clients (sorted by `updatedAt`)
+
+### Search & Lookup
+
+- `buscarClientesSimilares()` - Fuzzy search by name with Levenshtein ranking
+- `buscarClientePorTelefono()` - Exact phone number lookup
+- `listarServiciosPorClienteId()` - Get all services for a client
+
+### Loyalty Integration
+
+- `sumarPuntosCliente()` - Add or subtract points (use negative value to deduct)
+
+See [Clientes Firestore](/api/services/clientes) for detailed function documentation.
+
+## Usage Example
+
+```javascript
+import { 
+  crearCliente, 
+  buscarClientesSimilares,
+  sumarPuntosCliente 
+} from './js/services/clientes_firestore';
+
+// Create new client
+const result = await crearCliente({
+  nombre: "Carlos Ramírez",
+  telefono: "5559876543",
+  direccion: "Av. Insurgentes 789",
+  omitirNumeroSerie: false,
+  numeroSeriePreferido: "ABC123XYZ"
+});
+
+// Fuzzy search
+const matches = await buscarClientesSimilares("carlos ramirez");
+// Returns ranked results even if typed "carls ramirez" or "Carlos Ramirez"
+
+// Award loyalty points
+await sumarPuntosCliente(result.id, 50); // Add 50 points
+await sumarPuntosCliente(result.id, -25); // Redeem 25 points
+```
+
+## Data Migration Notes
+
+**Legacy Clients:** Older records may have empty `nombreNorm` and `nombreCompact` fields. The search function includes a fallback that:
+
+1. Queries recent clients by `updatedAt`
+2. Performs in-memory normalization and filtering
+3. Merges with prefix search results
+
+This ensures backward compatibility while new/updated records benefit from indexed search.

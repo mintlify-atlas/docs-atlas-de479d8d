@@ -1,0 +1,629 @@
+---
+title: Billing and CFDI
+description: Configure Mexican electronic invoicing (CFDI 4.0) and SAT integration
+icon: file-invoice
+---
+
+## Overview
+
+Luis IT Repair includes built-in support for Mexican CFDI (Comprobante Fiscal Digital por Internet) electronic invoicing. This guide covers:
+
+- CFDI 4.0 configuration
+- SAT catalog integration
+- PAC (Proveedor Autorizado de Certificacion) setup
+- Invoice generation and stamping
+- Folio management
+- Tax compliance
+
+<Note>
+  This feature requires valid RFC, digital certificates (CSD), and a PAC provider contract.
+</Note>
+
+## CFDI Basics
+
+### What is CFDI?
+
+CFDI (Comprobante Fiscal Digital por Internet) is Mexico's electronic invoicing standard mandated by SAT (Servicio de Administracion Tributaria). It replaces paper invoices and is legally required for:
+
+- B2B transactions
+- B2C transactions over $2,000 MXN
+- Any transaction where the customer requests an invoice
+
+### CFDI 4.0 Structure
+
+A CFDI includes:
+
+1. **Emisor** (Issuer): Your business information
+2. **Receptor** (Receiver): Customer information
+3. **Conceptos** (Line Items): Products/services sold
+4. **Impuestos** (Taxes): IVA, ISR, etc.
+5. **Complementos** (Complements): Additional data (optional)
+6. **Sello Digital** (Digital Stamp): Cryptographic signature
+7. **Timbre Fiscal Digital** (SAT Stamp): PAC validation
+
+## Configuration
+
+### Enable Billing Module
+
+<Steps>
+  <Step title="Navigate to POS Settings">
+    Go to **Configuracion > POS y Facturacion > Facturacion**
+  </Step>
+
+  <Step title="Enable Invoicing">
+    Check the box:
+    ```
+    ☑ Habilitar facturacion en POS
+    ```
+  </Step>
+
+  <Step title="Select Emission Mode">
+    Choose how invoices are issued:
+    - **Ticket y factura**: Print both receipt and invoice
+    - **Factura bajo solicitud**: Invoice only when customer requests
+    - **Solo factura**: Always invoice (no receipt)
+  </Step>
+</Steps>
+
+### Issuer Information (Emisor)
+
+<ParamField path="razonSocial" type="string" required>
+  Your business legal name as registered with SAT
+  
+  **Example:** `"Servicios Tecnologicos Luis IT Repair S.A. de C.V."`
+</ParamField>
+
+<ParamField path="rfcEmisor" type="string" required>
+  Your business RFC (Tax ID)
+  
+  **Format:**
+  - Persona Moral: 12 characters (e.g., `ABC123456D01`)
+  - Persona Fisica: 13 characters (e.g., `XAXX010101000`)
+  
+  <Warning>
+    This must match your SAT registration exactly.
+  </Warning>
+</ParamField>
+
+<ParamField path="regimenFiscal" type="string" required>
+  Your tax regime code from SAT catalog
+  
+  Common values:
+  - `601`: General de Ley Personas Morales
+  - `612`: Personas Fisicas con Actividades Empresariales y Profesionales
+  - `626`: Regimen Simplificado de Confianza
+  
+  [Full SAT Catalog c_RegimenFiscal](https://www.sat.gob.mx/consulta/23972/comprobante-fiscal-digital-por-internet)
+</ParamField>
+
+<ParamField path="codigoPostalEmisor" type="string" required>
+  Your fiscal domicile postal code (5 digits)
+  
+  **Example:** `"06000"`
+</ParamField>
+
+### Series and Folio
+
+<ParamField path="serie" type="string" default="A">
+  Invoice series identifier (up to 8 alphanumeric characters)
+  
+  **Examples:** `"A"`, `"FAC"`, `"2024"`
+  
+  <Tip>
+    Use different series for different purposes (e.g., "A" for retail, "B" for wholesale).
+  </Tip>
+</ParamField>
+
+<ParamField path="folioActual" type="number" default="1">
+  Current folio number (auto-increments with each invoice)
+  
+  **Format:** 6-digit padded (e.g., `000001`, `000002`)
+</ParamField>
+
+<ParamField path="autoIncrement" type="boolean" default="true">
+  Automatically increment folio after successful invoice creation
+</ParamField>
+
+**Full Folio Format:** `{serie}-{folio}`
+
+Examples:
+- `A-000001`
+- `FAC-000123`
+- `2024-001500`
+
+### CFDI Defaults
+
+#### Uso de CFDI (Customer Use)
+
+<ParamField path="usoCFDI" type="string" default="G03">
+  How the customer will use the invoice
+  
+  Common values:
+  - `G01`: Adquisicion de mercancias
+  - `G02`: Devoluciones, descuentos o bonificaciones
+  - `G03`: Gastos en general (most common for retail)
+  - `I01`: Construcciones
+  - `I02`: Mobilario y equipo de oficina por inversiones
+  - `I03`: Equipo de transporte
+  - `S01`: Sin efectos fiscales
+  
+  [Full SAT Catalog c_UsoCFDI](https://www.sat.gob.mx/consulta/23972/comprobante-fiscal-digital-por-internet)
+</ParamField>
+
+#### Payment Method (Metodo de Pago)
+
+<ParamField path="metodoPago" type="string" default="PUE">
+  Payment timing
+  
+  - `PUE`: Pago en Una sola Exhibicion (single payment)
+  - `PPD`: Pago en Parcialidades o Diferido (installment payments)
+  
+  <Note>
+    Use `PUE` for immediate payments, `PPD` for credit sales requiring payment complements.
+  </Note>
+</ParamField>
+
+#### Payment Form (Forma de Pago)
+
+<ParamField path="formaPago" type="string" default="01">
+  Payment instrument used
+  
+  Common values:
+  - `01`: Efectivo (cash)
+  - `02`: Cheque nominativo
+  - `03`: Transferencia electronica de fondos
+  - `04`: Tarjeta de credito
+  - `28`: Tarjeta de debito
+  - `99`: Por definir (use with PPD method)
+  
+  [Full SAT Catalog c_FormaPago](https://www.sat.gob.mx/consulta/23972/comprobante-fiscal-digital-por-internet)
+</ParamField>
+
+### Customer Requirements
+
+<ParamField path="requiereRFCCliente" type="boolean" default="true">
+  Require customer RFC before generating invoice
+  
+  <Warning>
+    Legally required for all CFDI. Use `XAXX010101000` for general public only when allowed.
+  </Warning>
+</ParamField>
+
+<ParamField path="requiereCorreoCliente" type="boolean" default="false">
+  Require customer email to send invoice XML and PDF
+  
+  <Tip>
+    Highly recommended for customer convenience and record-keeping.
+  </Tip>
+</ParamField>
+
+### Test Mode
+
+<ParamField path="timbradoPruebas" type="boolean" default="true">
+  Enable test/sandbox mode
+  
+  When enabled:
+  - Invoices are not legally valid
+  - No real stamping/timbrado occurs
+  - No charges from PAC
+  - Testing CFDI generation workflow
+  
+  <Warning>
+    **Disable in production** to issue legally valid invoices.
+  </Warning>
+</ParamField>
+
+## PAC Integration
+
+### What is a PAC?
+
+A PAC (Proveedor Autorizado de Certificacion) is an SAT-authorized provider that validates and stamps (timbra) your CFDI with the official SAT seal.
+
+Popular PAC providers:
+- Finkok
+- SW Sapien
+- Facturomatic
+- Grupo Edicom
+- Paquetexpress
+
+### Setup Process
+
+<Steps>
+  <Step title="Choose a PAC Provider">
+    Research and select a PAC provider based on:
+    - Pricing per stamp
+    - API quality and documentation
+    - Support and reliability
+    - Integration options
+  </Step>
+
+  <Step title="Register and Get Credentials">
+    Sign up with your chosen PAC and obtain:
+    - API endpoint URLs
+    - Authentication credentials (API key, username/password)
+    - Testing/sandbox credentials
+  </Step>
+
+  <Step title="Install PAC SDK or Library">
+    Many PACs provide SDKs for Node.js:
+
+    ```bash
+    npm install @finkok/sdk
+    # or
+    npm install sw-sapien-sdk
+    ```
+  </Step>
+
+  <Step title="Configure Environment Variables">
+    Add PAC credentials to your environment:
+
+    ```bash
+    # In your .env file (never commit this!)
+    PAC_API_URL=https://api.pac-provider.com
+    PAC_API_KEY=your-api-key
+    PAC_USERNAME=your-username
+    PAC_PASSWORD=your-password
+    ```
+
+    For Firebase Functions:
+
+    ```bash
+    firebase functions:config:set \
+      pac.api_url="https://api.pac-provider.com" \
+      pac.api_key="your-api-key" \
+      pac.username="your-username" \
+      pac.password="your-password"
+    ```
+  </Step>
+
+  <Step title="Implement Stamping Function">
+    Create a Cloud Function to handle CFDI stamping:
+
+    ```typescript functions/src/cfdiStamping.ts
+    import { onCall } from "firebase-functions/v2/https";
+    import * as admin from "firebase-admin";
+    // Import your PAC SDK
+
+    export const stampCFDI = onCall(async (request) => {
+      const { cfdiXml, issuerRFC } = request.data;
+
+      // Validate request
+      if (!request.auth) {
+        throw new Error("Authentication required");
+      }
+
+      try {
+        // Call PAC API to stamp CFDI
+        const response = await pacProvider.stamp({
+          xml: cfdiXml,
+          rfc: issuerRFC
+        });
+
+        // Store stamped CFDI in Firestore
+        await admin.firestore()
+          .collection('facturas')
+          .add({
+            folio: response.folio,
+            uuid: response.uuid,
+            xml: response.stampedXml,
+            pdf: response.pdfUrl,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+
+        return {
+          success: true,
+          uuid: response.uuid,
+          stampedXml: response.stampedXml,
+          pdfUrl: response.pdfUrl
+        };
+      } catch (error) {
+        console.error('PAC stamping error:', error);
+        throw new Error('Failed to stamp CFDI');
+      }
+    });
+    ```
+  </Step>
+</Steps>
+
+## CFDI Generation Flow
+
+<Steps>
+  <Step title="Collect Invoice Data">
+    From POS transaction:
+    - Issuer information (from config)
+    - Customer RFC and name
+    - Line items (products/services)
+    - Taxes (IVA)
+    - Payment method and form
+    - Uso de CFDI
+  </Step>
+
+  <Step title="Build CFDI XML">
+    Generate XML according to SAT CFDI 4.0 schema:
+
+    ```xml
+    <?xml version="1.0" encoding="UTF-8"?>
+    <cfdi:Comprobante
+      xmlns:cfdi="http://www.sat.gob.mx/cfd/4"
+      Version="4.0"
+      Serie="A"
+      Folio="000001"
+      Fecha="2024-03-06T15:30:00"
+      FormaPago="01"
+      MetodoPago="PUE"
+      TipoDeComprobante="I"
+      Exportacion="01"
+      LugarExpedicion="06000"
+      SubTotal="1000.00"
+      Total="1160.00">
+      
+      <cfdi:Emisor
+        Rfc="ABC123456D01"
+        Nombre="Luis IT Repair"
+        RegimenFiscal="626"/>
+      
+      <cfdi:Receptor
+        Rfc="XAXX010101000"
+        Nombre="Cliente General"
+        DomicilioFiscalReceptor="06000"
+        RegimenFiscalReceptor="616"
+        UsoCFDI="G03"/>
+      
+      <cfdi:Conceptos>
+        <cfdi:Concepto
+          ClaveProdServ="43211500"
+          Cantidad="1"
+          ClaveUnidad="E48"
+          Descripcion="Reparacion de laptop"
+          ValorUnitario="1000.00"
+          Importe="1000.00"
+          ObjetoImp="02">
+          
+          <cfdi:Impuestos>
+            <cfdi:Traslados>
+              <cfdi:Traslado
+                Base="1000.00"
+                Impuesto="002"
+                TipoFactor="Tasa"
+                TasaOCuota="0.160000"
+                Importe="160.00"/>
+            </cfdi:Traslados>
+          </cfdi:Impuestos>
+        </cfdi:Concepto>
+      </cfdi:Conceptos>
+      
+      <cfdi:Impuestos
+        TotalImpuestosTrasladados="160.00">
+        <cfdi:Traslados>
+          <cfdi:Traslado
+            Base="1000.00"
+            Impuesto="002"
+            TipoFactor="Tasa"
+            TasaOCuota="0.160000"
+            Importe="160.00"/>
+        </cfdi:Traslados>
+      </cfdi:Impuestos>
+    </cfdi:Comprobante>
+    ```
+  </Step>
+
+  <Step title="Sign XML with CSD">
+    Apply your digital certificate (Certificado de Sello Digital):
+    - Load .cer and .key files
+    - Generate cryptographic seal
+    - Add seal to XML
+  </Step>
+
+  <Step title="Send to PAC for Stamping">
+    Submit signed XML to PAC API for validation and stamping.
+  </Step>
+
+  <Step title="Receive Stamped CFDI">
+    PAC returns:
+    - UUID (Folio Fiscal) - Unique SAT identifier
+    - Timbre Fiscal Digital (SAT stamp)
+    - Stamped XML with complete CFDI
+    - Optional: PDF representation
+  </Step>
+
+  <Step title="Store and Deliver">
+    - Save to Firestore (`facturas` collection)
+    - Send XML and PDF to customer via email
+    - Print confirmation receipt
+    - Update folio counter
+  </Step>
+</Steps>
+
+## SAT Catalogs
+
+### Common Catalog Codes
+
+<CodeGroup>
+```json Product/Service Key (c_ClaveProdServ)
+{
+  "43211500": "Computer repair and maintenance services",
+  "43211501": "Computer hardware installation services",
+  "43211503": "Software installation services",
+  "43211902": "Data recovery services",
+  "43222600": "Software licensing services",
+  "81112100": "Computer accessories",
+  "81161700": "Data cables"
+}
+```
+
+```json Unit of Measure (c_ClaveUnidad)
+{
+  "E48": "Unidad de servicio (service unit)",
+  "H87": "Pieza (piece)",
+  "E54": "Viaje (trip)",
+  "ACT": "Actividad (activity)"
+}
+```
+
+```json Tax Regime (c_RegimenFiscal)
+{
+  "601": "General de Ley Personas Morales",
+  "603": "Personas Morales con Fines no Lucrativos",
+  "605": "Sueldos y Salarios e Ingresos Asimilados a Salarios",
+  "612": "Personas Fisicas con Actividades Empresariales",
+  "621": "Incorporacion Fiscal",
+  "626": "Regimen Simplificado de Confianza"
+}
+```
+</CodeGroup>
+
+[Full SAT Catalog Codes](https://www.sat.gob.mx/consulta/23972/comprobante-fiscal-digital-por-internet)
+
+## Cancellation and Credits
+
+### Cancel Invoice
+
+To cancel a CFDI:
+
+<Steps>
+  <Step title="Request Cancellation from PAC">
+    Call PAC API with UUID to cancel:
+
+    ```typescript
+    const result = await pacProvider.cancelCFDI({
+      uuid: 'ABC12345-6789-...',
+      rfc: 'ABC123456D01',
+      motive: '01', // Comprobante emitido con errores
+      replacementUuid: null // Optional replacement UUID
+    });
+    ```
+  </Step>
+
+  <Step title="Update Firestore Record">
+    Mark invoice as cancelled:
+
+    ```typescript
+    await admin.firestore()
+      .collection('facturas')
+      .doc(invoiceId)
+      .update({
+        status: 'cancelled',
+        cancelledAt: admin.firestore.FieldValue.serverTimestamp(),
+        cancellationMotive: '01'
+      });
+    ```
+  </Step>
+
+  <Step title="Notify Customer">
+    Send cancellation notification via email.
+  </Step>
+</Steps>
+
+### Credit Notes (Egreso)
+
+For returns or corrections, create a credit note (Egreso CFDI):
+
+```xml
+<cfdi:Comprobante
+  TipoDeComprobante="E"
+  ...>
+  <!-- References original invoice -->
+</cfdi:Comprobante>
+```
+
+## Compliance and Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always Request Customer RFC">
+    For legal compliance, always request customer RFC when issuing invoices. Only use "XAXX010101000" (general public) when legally allowed.
+  </Accordion>
+
+  <Accordion title="Backup Stamped XML Files">
+    SAT requires you to keep XML files for 5 years. Implement automatic backup to cloud storage:
+
+    ```typescript
+    import { getStorage } from "firebase-admin/storage";
+
+    const bucket = getStorage().bucket();
+    await bucket.file(`facturas/${uuid}.xml`).save(stampedXml);
+    ```
+  </Accordion>
+
+  <Accordion title="Monitor PAC Credits">
+    Track your PAC credit balance to avoid service interruptions.
+  </Accordion>
+
+  <Accordion title="Test in Sandbox First">
+    Always test CFDI generation in PAC sandbox before going live.
+  </Accordion>
+
+  <Accordion title="Validate XML Schema">
+    Use SAT's official XSD schemas to validate XML before sending to PAC.
+  </Accordion>
+
+  <Accordion title="Handle Cancellations Within 72 Hours">
+    SAT rules allow easier cancellation within 72 hours of issuance.
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="PAC Rejects XML">
+    Common causes:
+    - Invalid RFC format
+    - Incorrect catalog codes
+    - Missing required fields
+    - XML schema validation errors
+    - Math errors in totals/taxes
+
+    Check PAC error response for specific validation failure.
+  </Accordion>
+
+  <Accordion title="Certificate Issues">
+    - Verify .cer and .key files are valid and not expired
+    - Ensure CSD password is correct
+    - Check that RFC in certificate matches configuration
+  </Accordion>
+
+  <Accordion title="UUID Not Generating">
+    - Verify PAC credentials are correct
+    - Check PAC service status
+    - Ensure you have sufficient PAC credits
+    - Review PAC API logs
+  </Accordion>
+
+  <Accordion title="Customer Cannot Validate Invoice">
+    Customers can validate invoices at:
+    [https://verificacfdi.facturaelectronica.sat.gob.mx/](https://verificacfdi.facturaelectronica.sat.gob.mx/)
+
+    They need:
+    - UUID
+    - Issuer RFC
+    - Receiver RFC
+    - Total amount
+  </Accordion>
+</AccordionGroup>
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="SAT CFDI Portal" icon="link" href="https://www.sat.gob.mx/consulta/23972/comprobante-fiscal-digital-por-internet">
+    Official SAT documentation and catalogs
+  </Card>
+  <Card title="SAT Schemas" icon="code" href="http://www.sat.gob.mx/sitio_internet/cfd/4/cfdv40.xsd">
+    XML Schema Definition (XSD) files
+  </Card>
+  <Card title="CFDI Validator" icon="check" href="https://verificacfdi.facturaelectronica.sat.gob.mx/">
+    Validate issued invoices
+  </Card>
+  <Card title="Authorized PAC List" icon="users" href="https://www.sat.gob.mx/consulta/93836/proveedores-de-certificacion-de-expedicion-de-cfdi">
+    SAT-authorized PAC providers
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="POS Settings" icon="cash-register" href="/configuration/pos-settings">
+    Configure IVA and ticket printing
+  </Card>
+  <Card title="Firebase Functions" icon="fire" href="/configuration/firebase-setup#cloud-functions-setup">
+    Deploy billing functions
+  </Card>
+</CardGroup>
