@@ -1,0 +1,112 @@
+{
+  "projectType": "saas",
+  "projectName": "Luis IT Repair",
+  "projectDescription": "Complete IT repair shop management system with service tracking, POS, inventory, and customer management.",
+  "theme": "almond",
+  "primaryColor": "#f1d262",
+  "lightColor": "#7c6c34",
+  "darkColor": "#19160b",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "quickstart", "installation"]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/service-management",
+              "features/point-of-sale",
+              "features/client-management",
+              "features/inventory",
+              "features/reports-analytics",
+              "features/employee-management"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/creating-service-tickets",
+              "guides/processing-sales",
+              "guides/managing-clients",
+              "guides/tracking-inventory",
+              "guides/cash-register-operations",
+              "guides/permissions-roles"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/firebase-setup",
+              "configuration/pos-settings",
+              "configuration/appearance",
+              "configuration/billing"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Services",
+            "pages": [
+              "api/services/servicios",
+              "api/services/clientes",
+              "api/services/pos",
+              "api/services/productos"
+            ]
+          },
+          {
+            "group": "Data Models",
+            "pages": [
+              "api/models/service-ticket",
+              "api/models/client",
+              "api/models/product",
+              "api/models/sale"
+            ]
+          },
+          {
+            "group": "Firebase",
+            "pages": [
+              "api/firebase/firestore-collections",
+              "api/firebase/security-rules",
+              "api/firebase/functions"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Service ticket management with status tracking",
+    "Point of Sale system with multiple payment methods",
+    "Client database with loyalty points program",
+    "Product inventory management with stock control",
+    "Employee management with role-based permissions",
+    "Cash register operations and daily reports",
+    "Real-time service status lookup for customers",
+    "Analytics dashboard with revenue charts",
+    "PDF generation for tickets and reports",
+    "QR code scanning for mobile POS"
+  ],
+  "publicApiSurface": [
+    "buscarServicioPorFolio",
+    "actualizarServicioPorId",
+    "listarServiciosPendientes",
+    "obtenerClientePorId",
+    "buscarClientePorTelefono",
+    "sumarPuntosCliente",
+    "registrarVenta",
+    "descontarStock",
+    "obtenerProductos",
+    "obtenerKPIsDashboard",
+    "obtenerResumenCajaHoy",
+    "registrarAperturaCaja",
+    "generarPdfCorteCajaDia",
+    "imprimirTicketVenta"
+  ]
+}
